@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"strings"
 )
 
 type reader struct {
@@ -189,6 +190,93 @@ func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
 		err = err1
 	}
 	return slc, err
+}
+
+func getLines(buf []byte) func() []byte {
+	readline := func() ([]byte, int) {
+		nl := bytes.IndexByte(buf, '\n')
+		switch {
+		case nl < 0:
+			return bytes.TrimSpace(buf), 0
+		case nl == len(buf)-1:
+			return bytes.TrimSpace(buf[:nl]), 0
+		default:
+			return bytes.TrimSpace(buf[:nl]), nl + 1
+		}
+	}
+	skipspace := func() int {
+		n := 0
+		for {
+			if n == len(buf) {
+				return n
+			}
+			c := buf[n]
+			if c != ' ' && c != '\t' {
+				return n
+			}
+			n++
+		}
+	}
+	return func() []byte {
+		if buf == nil {
+			return nil
+		}
+		ret, adv := readline()
+		if adv == 0 {
+			buf = nil
+			return ret
+		}
+		buf = buf[adv:]
+		for s := skipspace(); s > 0; s = skipspace() {
+			buf = buf[s:]
+			n, a := readline()
+			ret = append(append(ret, ' '), n...)
+			if a == 0 {
+				buf = nil
+				return ret
+			}
+			buf = buf[a:]
+		}
+		return ret
+	}
+}
+
+func normaliseKey(k []byte) string {
+	parts := bytes.Split(k, []byte("-"))
+	for i, v := range parts {
+		parts[i] = []byte(strings.Title(string(v)))
+	}
+	return string(bytes.Join(parts, []byte("-")))
+}
+
+func getSelectValues(buf []byte, vals ...string) []string {
+	ret := make([]string, len(vals))
+	lines := getLines(buf)
+	for l := lines(); l != nil; l = lines() {
+		parts := bytes.SplitN(l, []byte(":"), 2)
+		if len(parts) == 2 {
+			k := normaliseKey(parts[0])
+			for i, s := range vals {
+				if s == k {
+					ret[i] = string(bytes.TrimSpace(parts[1]))
+				}
+			}
+		}
+	}
+	return ret
+}
+
+func getAllValues(buf []byte) map[string][]string {
+	ret := make(map[string][]string)
+	lines := getLines(buf)
+	for l := lines(); l != nil; l = lines() {
+		parts := bytes.Split(l, []byte(":"))
+		if len(parts) == 2 {
+			k := normaliseKey(parts[0])
+			ret[k] = append(ret[k], string(bytes.TrimSpace(parts[1])))
+		}
+	}
+	return ret
 }
 
 type continuations map[string]*continuation

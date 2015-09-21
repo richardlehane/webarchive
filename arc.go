@@ -24,6 +24,11 @@ import (
 
 const timefmt = "20060102150405"
 
+type ARCHeader interface {
+	Header
+	setfields([]byte)
+}
+
 type ARC struct {
 	Path       string
 	Address    string
@@ -34,25 +39,32 @@ type ARC struct {
 
 // Version 1 URL record
 type URL1 struct {
-	url  string
-	IP   string    // dotted-quad (eg 192.216.46.98 or 0.0.0.0)
-	date time.Time //  YYYYMMDDhhmmss (Greenwich Mean Time)
-	MIME string    // "no-type"|MIME type of data (e.g., "text/html")
-	size int64
+	url    string
+	IP     string    // dotted-quad (eg 192.216.46.98 or 0.0.0.0)
+	date   time.Time //  YYYYMMDDhhmmss (Greenwich Mean Time)
+	MIME   string    // "no-type"|MIME type of data (e.g., "text/html")
+	size   int64
+	fields []byte
 }
 
 func (u *URL1) URL() string     { return u.url }
 func (u *URL1) Date() time.Time { return u.date }
 func (u *URL1) Size() int64     { return u.size }
 func (u *URL1) Fields() map[string][]string {
-	return map[string][]string{
-		"URL":  []string{u.url},
-		"IP":   []string{u.IP},
-		"Date": []string{u.date.Format(timefmt)},
-		"MIME": []string{u.MIME},
-		"Size": []string{strconv.FormatInt(u.size, 64)},
+	var fields map[string][]string
+	if len(u.fields) > 0 {
+		fields = getAllValues(u.fields)
+	} else {
+		fields = make(map[string][]string)
 	}
+	fields["URL"] = []string{u.url}
+	fields["IP"] = []string{u.IP}
+	fields["Date"] = []string{u.date.Format(timefmt)}
+	fields["MIME"] = []string{u.MIME}
+	fields["Size"] = []string{strconv.FormatInt(u.size, 10)}
+	return fields
 }
+func (u *URL1) setfields(f []byte) { u.fields = f }
 
 // Version 2 URL record
 type URL2 struct {
@@ -69,7 +81,7 @@ func (u *URL2) Fields() map[string][]string {
 	fields["StatusCode"] = []string{strconv.Itoa(u.StatusCode)}
 	fields["Checksum"] = []string{u.Checksum}
 	fields["Location"] = []string{u.Location}
-	fields["Offset"] = []string{strconv.FormatInt(u.Offset, 64)}
+	fields["Offset"] = []string{strconv.FormatInt(u.Offset, 10)}
 	fields["Filename"] = []string{u.Location}
 	return fields
 }
@@ -77,7 +89,7 @@ func (u *URL2) Fields() map[string][]string {
 type ARCReader struct {
 	*ARC
 	*reader
-	Header
+	ARCHeader
 }
 
 func NewARCReader(r io.Reader) (*ARCReader, error) {
@@ -94,25 +106,38 @@ func (a *ARCReader) Reset(r io.Reader) error {
 	return err
 }
 
-func (r *ARCReader) Next() (Record, error) {
+func (a *ARCReader) Next() (Record, error) {
 	// advance if haven't read the previous record
-	if r.thisIdx < r.sz {
-		if r.slicer {
-			r.idx += r.sz - r.thisIdx
+	if a.thisIdx < a.sz {
+		if a.slicer {
+			a.idx += a.sz - a.thisIdx
 		} else {
-			discard(r.buf, int(r.sz-r.thisIdx))
+			discard(a.buf, int(a.sz-a.thisIdx))
 		}
 	}
-	u, err := r.readURL()
+	u, err := a.readURL()
 	if err != nil {
 		return nil, err
 	}
-	r.thisIdx, r.sz = 0, u.Size()
-	return r, err
+	a.ARCHeader = u
+	a.thisIdx, a.sz = 0, a.Size()
+	return a, err
 }
 
 func (a *ARCReader) NextPayload() (Record, error) {
-	return a.Next()
+	r, err := a.Next()
+	if err != nil {
+		return r, err
+	}
+	if v, err := a.peek(5); err == nil && string(v) == "HTTP/" {
+		f, err := a.storeLines(0)
+		if err != nil {
+			return r, err
+		}
+		a.setfields(f)
+		a.thisIdx += int64(len(f))
+	}
+	return r, err
 }
 
 func (r *ARCReader) readVersionBlock() (*ARC, error) {
@@ -157,7 +182,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 	}, nil
 }
 
-func (r *ARCReader) readURL() (Header, error) {
+func (r *ARCReader) readURL() (ARCHeader, error) {
 	var buf []byte
 	var err error
 	for buf, err = r.readLine(); err == nil && len(bytes.TrimSpace(buf)) == 0; buf, err = r.readLine() {

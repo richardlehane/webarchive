@@ -39,14 +39,14 @@ func ExampleBlackbookARC() {
 	if err != nil {
 		log.Fatal("failure creating an arc reader")
 	}
-	rec, err := rdr.Next()
+	rec, err := rdr.NextPayload()
 	if err != nil {
 		log.Fatal("failure seeking")
 	}
 	buf := make([]byte, 56)
 	io.ReadFull(rec, buf)
 	var count int
-	for _, err = rdr.Next(); err != io.EOF; _, err = rdr.Next() {
+	for _, err = rdr.NextPayload(); err != io.EOF; _, err = rdr.NextPayload() {
 		if err != nil {
 			log.Fatal(err)
 		}
