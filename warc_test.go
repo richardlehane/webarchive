@@ -31,14 +31,14 @@ func ExampleBlackbookWARC() {
 	if err != nil {
 		log.Fatal("failure creating an warc reader")
 	}
-	rec, err := rdr.Next()
+	rec, err := rdr.NextPayload()
 	if err != nil {
 		log.Fatal("failure seeking: " + err.Error())
 	}
 	buf := make([]byte, 55)
 	io.ReadFull(rec, buf)
 	var count int
-	for _, err = rdr.Next(); err != io.EOF; _, err = rdr.Next() {
+	for _, err = rdr.NextPayload(); err != io.EOF; _, err = rdr.NextPayload() {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -46,6 +46,7 @@ func ExampleBlackbookWARC() {
 	}
 	fmt.Printf("%s\n%d", buf, count)
 	// Output:
-	// software: Heritrix/@VERSION@ http://crawler.archive.org
-	// 821
+	// 20080430204825
+	// www.archive.org.	589	IN	A	207.241.229.39
+	// 298
 }

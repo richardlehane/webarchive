@@ -78,7 +78,7 @@ func (w *WARCReader) Next() (Record, error) {
 		}
 		return nil, ErrWARCHeader
 	}
-	w.fields, err = w.storeLines()
+	w.fields, err = w.storeLines(0)
 	if err != nil {
 		return nil, ErrWARCRecord
 	}
@@ -97,7 +97,30 @@ func (w *WARCReader) Next() (Record, error) {
 }
 
 func (w *WARCReader) NextPayload() (Record, error) {
-	return w.Next()
+	for {
+		r, err := w.Next()
+		if err != nil {
+			return r, err
+		}
+		switch w.Type {
+		default:
+			continue
+		case "resource", "conversion":
+			return r, err
+			//case "continuation":
+			//	if cr, ok := w.continuations.put(r); ok {
+			//		return cr, nil
+			//	}
+		case "response":
+			if v, err := w.peek(5); err == nil && string(v) == "HTTP/" {
+				l := len(w.fields)
+				w.fields, err = w.storeLines(l)
+				w.thisIdx += int64(len(w.fields) - l)
+				return w, err
+			}
+			return r, err
+		}
+	}
 }
 
 func getLines(buf []byte) func() []byte {

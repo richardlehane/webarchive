@@ -82,9 +82,9 @@ func (r *reader) readLine() ([]byte, error) {
 }
 
 // read to first blank line
-func (r *reader) storeLines() ([]byte, error) {
+func (r *reader) storeLines(i int) ([]byte, error) {
 	if r.slicer {
-		start := r.idx
+		start := r.idx - int64(i)
 		l := 1024
 		for {
 			slc, err := r.src.(slicer).Slice(r.idx, l)
@@ -92,7 +92,7 @@ func (r *reader) storeLines() ([]byte, error) {
 			if i > -1 {
 				r.idx += int64(i) + 1
 				if i < 3 {
-					return r.src.(slicer).Slice(start, int(r.idx))
+					return r.src.(slicer).Slice(start, int(r.idx-start))
 				}
 			}
 			if err != nil {
@@ -104,7 +104,6 @@ func (r *reader) storeLines() ([]byte, error) {
 	if r.store == nil {
 		r.store = make([]byte, 4096)
 	}
-	var i int
 	for {
 		slc, err := r.buf.ReadBytes('\n')
 		if err != nil {
@@ -194,7 +193,7 @@ func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
 
 type continuations map[string]*continuation
 
-func (c continuations) put(h Header, b []byte) (Record, bool) {
+func (c continuations) put(r Record) (Record, bool) {
 	return nil, false
 }
 
