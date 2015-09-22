@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"io/ioutil"
 	"strings"
 )
 
@@ -361,53 +362,117 @@ func getAllValues(buf []byte) map[string][]string {
 
 type continuations map[string]*continuation
 
-func (c continuations) put(r Record) (Record, bool) {
-
-	return nil, false
+func (c continuations) put(w *WARCReader) (Record, bool) {
+	var id string
+	var final bool
+	if w.WARCHeader.segment > 1 {
+		fields := w.WARCHeader.Fields()
+		s, ok := fields["WARC-Segment-Origin-ID"]
+		if ok {
+			id = s[0]
+		}
+		_, final = fields["WARC-Segment-Total-Length"] // if we have this field, can mark continuation as complete
+	} else {
+		id = w.WARCHeader.ID
+	}
+	cr, ok := c[id]
+	if !ok {
+		cr = &continuation{
+			WARCHeader: &WARCHeader{
+				url:    w.WARCHeader.url,
+				ID:     w.WARCHeader.ID,
+				date:   w.WARCHeader.date,
+				Type:   w.WARCHeader.Type,
+				fields: make([]byte, len(w.WARCHeader.fields)),
+			},
+			bufs: make([][]byte, w.WARCHeader.segment),
+		}
+		copy(cr.WARCHeader.fields, w.WARCHeader.fields)
+		c[id] = cr
+	}
+	if final {
+		cr.final = true
+	}
+	if len(cr.bufs) < w.WARCHeader.segment {
+		nb := make([][]byte, w.WARCHeader.segment)
+		copy(nb, cr.bufs)
+	}
+	cr.bufs[w.WARCHeader.segment-1], _ = ioutil.ReadAll(w)
+	if !cr.complete() {
+		return nil, false
+	}
+	delete(c, id) // clear the continutation before returning
+	return cr, true
 }
 
 type continuation struct {
 	*WARCHeader
-	i   int
-	buf [][]byte
+	final bool
+	idx   int
+	start int
+	bufs  [][]byte
+	buf   []byte
 }
 
-func (c *continuation) size() int {
-	var l int
-	for _, b := range c.buf {
-		l += len(b)
+// check completeness - have final segment and all previous segments
+func (c *continuation) complete() bool {
+	if !c.final {
+		return false
 	}
-	return l
-}
-
-func (c *continuation) index(i int) (int, int) {
-	var tally int
-	for idx, b := range c.buf {
-		if i < tally+len(b) {
-			return idx, i - tally
+	var sz int
+	for _, b := range c.bufs {
+		if b == nil {
+			return false
 		}
-		tally += len(b)
+		sz += len(b)
 	}
-	return len(c.buf) - 1, -1
+	c.buf = make([]byte, sz+len(c.fields))
+	idx := len(c.fields)
+	copy(c.buf[:idx], c.fields)
+	for _, b := range c.bufs {
+		copy(c.buf[idx:], b)
+		idx += len(b)
+	}
+	c.idx, c.start = len(c.fields), len(c.fields)
+	return true
 }
 
 func (c *continuation) Read(p []byte) (int, error) {
-	_, o := c.index(c.i)
-	if o < 0 {
+	if c.idx >= len(c.buf) {
 		return 0, io.EOF
 	}
+	var err error
 	l := len(p)
-	if l > c.size()-c.i {
-		l = c.size() - c.i
+	if l > len(c.buf)-c.idx {
+		l = len(c.buf) - c.idx
+		err = io.EOF
 	}
-	return l, nil
+	copy(p, c.buf[c.idx:l])
+	c.idx += l
+	return l, err
 }
 
 func (c *continuation) Slice(off int64, l int) ([]byte, error) {
-
-	return nil, nil
+	if c.start+int(off) >= len(c.buf) {
+		return nil, io.EOF
+	}
+	var err error
+	if l > len(c.buf)-c.start-int(off) {
+		l, err = len(c.buf)-c.start-int(off), io.EOF
+	}
+	return c.buf[c.start+int(off) : c.start+int(off)+l], err
 }
 
 func (c *continuation) EofSlice(off int64, l int) ([]byte, error) {
-	return nil, nil
+	if int(off)+c.start >= len(c.buf) {
+		return nil, io.EOF
+	}
+	var o int
+	var err error
+	if l > len(c.buf)-c.start-int(off) {
+		l, o, err = len(c.buf)-c.start-int(off), 0, io.EOF
+	} else {
+		o = len(c.buf) - c.start - int(off) - l
+	}
+	return c.buf[o:l], err
 }

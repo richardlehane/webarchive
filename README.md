@@ -27,4 +27,3 @@ Example usage:
 Install with `go get github.com/richardlehane/webarchive`
 
 [![Build Status](https://travis-ci.org/richardlehane/webarchive.png?branch=master)](https://travis-ci.org/richardlehane/webarchive)
->>>>>>> 00c9a2e0c22023e4b3aacbe8937583217fac8f4a

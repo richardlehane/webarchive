@@ -26,7 +26,7 @@ type WARCHeader struct {
 	date    time.Time // WARC-Date
 	size    int64     // Content-Length
 	Type    string    // WARC-Type
-	segment int       // WARC-Segment-Number present
+	segment int       // WARC-Segment-Number
 	fields  []byte
 }
 
@@ -103,15 +103,17 @@ func (w *WARCReader) NextPayload() (Record, error) {
 		if err != nil {
 			return r, err
 		}
+		if w.segment > 0 {
+			if c, ok := w.continuations.put(w); ok {
+				return c, nil
+			}
+			continue
+		}
 		switch w.Type {
 		default:
 			continue
 		case "resource", "conversion":
 			return r, err
-		case "continuation":
-			if cr, ok := w.continuations.put(r); ok {
-				return cr, nil
-			}
 		case "response":
 			if v, err := w.peek(5); err == nil && string(v) == "HTTP/" {
 				l := len(w.fields)
