@@ -4,8 +4,8 @@ A reader for the WARC and ARC web archive formats.
 
 This package has been written for use in [https://github.com/richardlehane/siegfried](https://github.com/richardlehane/siegfried) and has a bunch of quirks relating to that specific use case. If you're after a general purpose golang warc package, you might be better suited by one of these excellent choices:
 
-[https://github.com/edsu/warc](https://github.com/edsu/warc)
-[https://github.com/slyrz/warc](https://github.com/slyrz/warc)
+  - [https://github.com/edsu/warc](https://github.com/edsu/warc)
+  - [https://github.com/slyrz/warc](https://github.com/slyrz/warc)
 
 Example usage:
 
