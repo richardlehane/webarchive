@@ -25,6 +25,26 @@ func TestWARC(t *testing.T) {
 	}
 }
 
+func TestGZ(t *testing.T) {
+	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.warc.gz")
+	defer f.Close()
+	rdr, err := NewWARCReader(f)
+	if err != nil {
+		t.Fatal("failure loading example: " + err.Error())
+	}
+	defer rdr.Close()
+	var count int
+	for _, err = rdr.NextPayload(); err != io.EOF; _, err = rdr.NextPayload() {
+		if err != nil {
+			log.Fatal(err)
+		}
+		count++
+	}
+	if count != 299 {
+		t.Errorf("expecting 299 payloads, got %d", count)
+	}
+}
+
 func ExampleBlackbookWARC() {
 	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.warc")
 	rdr, err := NewWARCReader(f)

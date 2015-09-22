@@ -17,43 +17,157 @@ package webarchive
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"io"
 	"strings"
 )
 
-type reader struct {
-	src     io.Reader
-	buf     *bufio.Reader
-	slicer  bool
-	idx     int64
-	thisIdx int64
-	sz      int64
-	store   []byte
-}
-
+// siegfried related: siegfried buffers have a slice method, the use here allows re-use of that underlying buffer
+// siegfried is https://github.com/richardlehane/siegfried
 type slicer interface {
 	Slice(off int64, l int) ([]byte, error)
 }
 
-func newReader(r io.Reader) *reader {
-	rdr := &reader{src: r}
-	if _, ok := r.(slicer); ok {
-		rdr.slicer = true
-	} else {
-		rdr.buf = bufio.NewReader(r)
-	}
-	return rdr
+type reader struct {
+	src     io.Reader     // reference to the provided reader
+	sbuf    *bufio.Reader // buffer src if not a slicer
+	buf     *bufio.Reader // buf will point to sbuf, unless src is gzip
+	closer  io.ReadCloser // if gzip, hold reference to close it
+	slicer  bool          // does the source conform to the slicer interface? (siegfried related: siegfried buffers have this method)
+	idx     int64         // read index within the entire file
+	thisIdx int64         // read index within the current record
+	sz      int64         // size of the current record
+	store   []byte        // used as temp store for fields
 }
 
-func (r *reader) reset(s io.Reader) {
+func (r *reader) Read(p []byte) (int, error) {
+	if r.thisIdx >= r.sz {
+		return 0, io.EOF
+	}
+	l := len(p)
+	if int64(len(p)) > r.sz-r.thisIdx {
+		l = int(r.sz - r.thisIdx)
+	}
+	r.thisIdx += int64(l)
+	if !r.slicer {
+		return fullRead(r.buf, p[:l])
+	}
+	buf, err := r.Slice(r.idx, l)
+	l = copy(p, buf)
+	r.idx += int64(l)
+	return l, err
+}
+
+func (r *reader) Slice(off int64, l int) ([]byte, error) {
+	if !r.slicer {
+		return nil, ErrNotSlicer
+	}
+	if off >= r.sz {
+		return nil, io.EOF
+	}
+	var err error
+	if l > int(r.sz-off) {
+		l, err = int(r.sz-off), io.EOF
+	}
+	slc, err1 := r.src.(slicer).Slice(r.idx+off, l)
+	if err1 != nil {
+		err = err1
+	}
+	return slc, err
+}
+
+func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
+	if !r.slicer {
+		return nil, ErrNotSlicer
+	}
+	if off >= r.sz {
+		return nil, io.EOF
+	}
+	var err error
+	if l > int(r.sz-off) {
+		l, off, err = int(r.sz-off), 0, io.EOF
+	} else {
+		off = r.sz - off - int64(l)
+	}
+	slc, err1 := r.src.(slicer).Slice(r.idx+off, l)
+	if err1 != nil {
+		err = err1
+	}
+	return slc, err
+}
+
+func (r *reader) Close() error {
+	if r.closer == nil {
+		return nil
+	}
+	return r.closer.Close()
+}
+
+func newReader(s io.Reader) (*reader, error) {
+	r := &reader{src: s}
+	if _, ok := s.(slicer); ok {
+		r.slicer = true
+	} else {
+		r.sbuf = bufio.NewReader(s)
+	}
+	err := r.unzip()
+	return r, err
+}
+
+func (r *reader) reset(s io.Reader) error {
 	r.src = s
 	if _, ok := s.(slicer); ok {
 		r.slicer = true
 	} else {
 		r.slicer = false
-		r.buf.Reset(s)
+		if r.sbuf == nil {
+			r.sbuf = bufio.NewReader(s)
+		} else {
+			r.sbuf.Reset(s)
+		}
 	}
 	r.idx, r.thisIdx, r.sz = 0, 0, 0
+	return r.unzip()
+}
+
+func isgzip(buf []byte) bool {
+	if buf[0] != 0x1f || buf[1] != 0x8b || buf[2] != 8 {
+		return false
+	}
+	return true
+}
+
+func (r *reader) unzip() error {
+	if buf, err := r.srcpeek(3); err == nil && isgzip(buf) {
+		var gr *gzip.Reader
+		if r.slicer {
+			gr, err = gzip.NewReader(r.src)
+		} else {
+			gr, err = gzip.NewReader(r.sbuf)
+		}
+		if err != nil {
+			return err
+		}
+		r.closer = gr
+		if r.buf == nil || r.buf == r.sbuf {
+			r.buf = bufio.NewReader(gr)
+		} else {
+			r.buf.Reset(gr)
+		}
+		r.slicer = false
+	} else {
+		r.closer = nil
+		r.buf = r.sbuf
+	}
+	return nil
+}
+
+// peek from r.src (rather than usual r.buf)
+func (r *reader) srcpeek(i int) ([]byte, error) {
+	if r.slicer {
+		return r.src.(slicer).Slice(r.idx, i)
+	}
+	return r.sbuf.Peek(i)
 }
 
 func (r *reader) peek(i int) ([]byte, error) {
@@ -61,6 +175,24 @@ func (r *reader) peek(i int) ([]byte, error) {
 		return r.src.(slicer).Slice(r.idx, i)
 	}
 	return r.buf.Peek(i)
+}
+
+func (r *reader) next() ([]byte, error) {
+	// advance if haven't read the previous record
+	if r.thisIdx < r.sz {
+		if r.slicer {
+			r.idx += r.sz - r.thisIdx
+		} else {
+			discard(r.buf, int(r.sz-r.thisIdx))
+		}
+	}
+	var slc []byte
+	var err error
+	// trim any leading blank lines, then return the first line with text
+	// may reach io.EOF here in which case return that error for halting
+	for slc, err = r.readLine(); err == nil && len(bytes.TrimSpace(slc)) == 0; slc, err = r.readLine() {
+	}
+	return slc, err
 }
 
 func (r *reader) readLine() ([]byte, error) {
@@ -82,7 +214,8 @@ func (r *reader) readLine() ([]byte, error) {
 	return r.buf.ReadBytes('\n')
 }
 
-// read to first blank line
+// read to first blank line and return a byte slice containing that content
+// this is used to grab WARC and HTTP header blocks
 func (r *reader) storeLines(i int) ([]byte, error) {
 	if r.slicer {
 		start := r.idx - int64(i)
@@ -136,100 +269,47 @@ func fullRead(r *bufio.Reader, p []byte) (int, error) {
 	}
 }
 
-func (r *reader) Read(p []byte) (int, error) {
-	if r.thisIdx >= r.sz {
-		return 0, io.EOF
+func readline(buf []byte) ([]byte, int) {
+	nl := bytes.IndexByte(buf, '\n')
+	switch {
+	case nl < 0:
+		return bytes.TrimSpace(buf), 0
+	case nl == len(buf)-1:
+		return bytes.TrimSpace(buf[:nl]), 0
+	default:
+		return bytes.TrimSpace(buf[:nl]), nl + 1
 	}
-	l := len(p)
-	if int64(len(p)) > r.sz-r.thisIdx {
-		l = int(r.sz - r.thisIdx)
-	}
-	r.thisIdx += int64(l)
-	if !r.slicer {
-		return fullRead(r.buf, p[:l])
-	}
-	buf, err := r.Slice(r.idx, l)
-	copy(p, buf)
-	r.idx += int64(l)
-	return l, err
 }
 
-func (r *reader) Slice(off int64, l int) ([]byte, error) {
-	if !r.slicer {
-		return nil, ErrNotSlicer
+func skipspace(buf []byte) int {
+	n := 0
+	for {
+		if n == len(buf) {
+			return n
+		}
+		c := buf[n]
+		if c != ' ' && c != '\t' {
+			return n
+		}
+		n++
 	}
-	if off >= r.sz {
-		return nil, io.EOF
-	}
-	var err error
-	if l > int(r.sz-off) {
-		l, err = int(r.sz-off), io.EOF
-	}
-	slc, err1 := r.src.(slicer).Slice(r.idx+off, l)
-	if err1 != nil {
-		err = err1
-	}
-	return slc, err
 }
 
-func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
-	if !r.slicer {
-		return nil, ErrNotSlicer
-	}
-	if off >= r.sz {
-		return nil, io.EOF
-	}
-	var err error
-	if l > int(r.sz-off) {
-		l, off, err = int(r.sz-off), 0, io.EOF
-	} else {
-		off = r.sz - off - int64(l)
-	}
-	slc, err1 := r.src.(slicer).Slice(r.idx+off, l)
-	if err1 != nil {
-		err = err1
-	}
-	return slc, err
-}
-
+// function that iterates through a byte slice, returning each individual line
 func getLines(buf []byte) func() []byte {
-	readline := func() ([]byte, int) {
-		nl := bytes.IndexByte(buf, '\n')
-		switch {
-		case nl < 0:
-			return bytes.TrimSpace(buf), 0
-		case nl == len(buf)-1:
-			return bytes.TrimSpace(buf[:nl]), 0
-		default:
-			return bytes.TrimSpace(buf[:nl]), nl + 1
-		}
-	}
-	skipspace := func() int {
-		n := 0
-		for {
-			if n == len(buf) {
-				return n
-			}
-			c := buf[n]
-			if c != ' ' && c != '\t' {
-				return n
-			}
-			n++
-		}
-	}
 	return func() []byte {
 		if buf == nil {
 			return nil
 		}
-		ret, adv := readline()
+		ret, adv := readline(buf)
 		if adv == 0 {
 			buf = nil
 			return ret
 		}
 		buf = buf[adv:]
-		for s := skipspace(); s > 0; s = skipspace() {
+		for s := skipspace(buf); s > 0; s = skipspace(buf) {
 			buf = buf[s:]
-			n, a := readline()
+			n, a := readline(buf)
 			ret = append(append(ret, ' '), n...)
 			if a == 0 {
 				buf = nil
@@ -282,6 +362,7 @@ func getAllValues(buf []byte) map[string][]string {
 type continuations map[string]*continuation
 
 func (c continuations) put(r Record) (Record, bool) {
+
 	return nil, false
 }
 
@@ -330,294 +411,3 @@ func (c *continuation) Slice(off int64, l int) ([]byte, error) {
 func (c *continuation) EofSlice(off int64, l int) ([]byte, error) {
 	return nil, nil
 }
-
-/*
-
-
-// ReadLine reads a single line from r,
-// eliding the final \n or \r\n from the returned string.
-func (r *Reader) ReadLine() (string, error) {
-	line, err := r.readLineSlice()
-	return string(line), err
-}
-
-// ReadLineBytes is like ReadLine but returns a []byte instead of a string.
-func (r *Reader) ReadLineBytes() ([]byte, error) {
-	line, err := r.readLineSlice()
-	if line != nil {
-		buf := make([]byte, len(line))
-		copy(buf, line)
-		line = buf
-	}
-	return line, err
-}
-
-func (r *Reader) readLineSlice() ([]byte, error) {
-	r.closeDot()
-	var line []byte
-	for {
-		l, more, err := r.R.ReadLine()
-		if err != nil {
-			return nil, err
-		}
-		// Avoid the copy if the first call produced a full line.
-		if line == nil && !more {
-			return l, nil
-		}
-		line = append(line, l...)
-		if !more {
-			break
-		}
-	}
-	return line, nil
-}
-
-func (r *Reader) ReadContinuedLine() (string, error) {
-	line, err := r.readContinuedLineSlice()
-	return string(line), err
-}
-
-// trim returns s with leading and trailing spaces and tabs removed.
-// It does not assume Unicode or UTF-8.
-func trim(s []byte) []byte {
-	i := 0
-	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
-		i++
-	}
-	n := len(s)
-	for n > i && (s[n-1] == ' ' || s[n-1] == '\t') {
-		n--
-	}
-	return s[i:n]
-}
-
-
-
-// ReadMIMEHeader reads a MIME-style header from r.
-// The header is a sequence of possibly continued Key: Value lines
-// ending in a blank line.
-// The returned map m maps CanonicalMIMEHeaderKey(key) to a
-// sequence of values in the same order encountered in the input.
-//
-// For example, consider this input:
-//
-//	My-Key: Value 1
-//	Long-Key: Even
-//	       Longer Value
-//	My-Key: Value 2
-//
-// Given that input, ReadMIMEHeader returns the map:
-//
-//	map[string][]string{
-//		"My-Key": {"Value 1", "Value 2"},
-//		"Long-Key": {"Even Longer Value"},
-//	}
-//
-func (r *Reader) ReadMIMEHeader() (MIMEHeader, error) {
-	// Avoid lots of small slice allocations later by allocating one
-	// large one ahead of time which we'll cut up into smaller
-	// slices. If this isn't big enough later, we allocate small ones.
-	var strs []string
-	hint := r.upcomingHeaderNewlines()
-	if hint > 0 {
-		strs = make([]string, hint)
-	}
-
-	m := make(MIMEHeader, hint)
-	for {
-		kv, err := r.readContinuedLineSlice()
-		if len(kv) == 0 {
-			return m, err
-		}
-
-		// Key ends at first colon; should not have spaces but
-		// they appear in the wild, violating specs, so we
-		// remove them if present.
-		i := bytes.IndexByte(kv, ':')
-		if i < 0 {
-			return m, ProtocolError("malformed MIME header line: " + string(kv))
-		}
-		endKey := i
-		for endKey > 0 && kv[endKey-1] == ' ' {
-			endKey--
-		}
-		key := canonicalMIMEHeaderKey(kv[:endKey])
-
-		// As per RFC 7230 field-name is a token, tokens consist of one or more chars.
-		// We could return a ProtocolError here, but better to be liberal in what we
-		// accept, so if we get an empty key, skip it.
-		if key == "" {
-			continue
-		}
-
-		// Skip initial spaces in value.
-		i++ // skip colon
-		for i < len(kv) && (kv[i] == ' ' || kv[i] == '\t') {
-			i++
-		}
-		value := string(kv[i:])
-
-		vv := m[key]
-		if vv == nil && len(strs) > 0 {
-			// More than likely this will be a single-element key.
-			// Most headers aren't multi-valued.
-			// Set the capacity on strs[0] to 1, so any future append
-			// won't extend the slice into the other strings.
-			vv, strs = strs[:1:1], strs[1:]
-			vv[0] = value
-			m[key] = vv
-		} else {
-			m[key] = append(vv, value)
-		}
-
-		if err != nil {
-			return m, err
-		}
-	}
-}
-
-
-
-// CanonicalMIMEHeaderKey returns the canonical format of the
-// MIME header key s.  The canonicalization converts the first
-// letter and any letter following a hyphen to upper case;
-// the rest are converted to lowercase.  For example, the
-// canonical key for "accept-encoding" is "Accept-Encoding".
-// MIME header keys are assumed to be ASCII only.
-// If s contains a space or invalid header field bytes, it is
-// returned without modifications.
-func CanonicalMIMEHeaderKey(s string) string {
-	// Quick check for canonical encoding.
-	upper := true
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !validHeaderFieldByte(c) {
-			return s
-		}
-		if upper && 'a' <= c && c <= 'z' {
-			return canonicalMIMEHeaderKey([]byte(s))
-		}
-		if !upper && 'A' <= c && c <= 'Z' {
-			return canonicalMIMEHeaderKey([]byte(s))
-		}
-		upper = c == '-'
-	}
-	return s
-}
-
-const toLower = 'a' - 'A'
-
-// validHeaderFieldByte reports whether b is a valid byte in a header
-// field key. This is actually stricter than RFC 7230, which says:
-//   tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
-//           "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
-//   token = 1*tchar
-// TODO: revisit in Go 1.6+ and possibly expand this. But note that many
-// servers have historically dropped '_' to prevent ambiguities when mapping
-// to CGI environment variables.
-func validHeaderFieldByte(b byte) bool {
-	return ('A' <= b && b <= 'Z') ||
-		('a' <= b && b <= 'z') ||
-		('0' <= b && b <= '9') ||
-		b == '-'
-}
-
-// canonicalMIMEHeaderKey is like CanonicalMIMEHeaderKey but is
-// allowed to mutate the provided byte slice before returning the
-// string.
-//
-// For invalid inputs (if a contains spaces or non-token bytes), a
-// is unchanged and a string copy is returned.
-func canonicalMIMEHeaderKey(a []byte) string {
-	// See if a looks like a header key. If not, return it unchanged.
-	for _, c := range a {
-		if validHeaderFieldByte(c) {
-			continue
-		}
-		// Don't canonicalize.
-		return string(a)
-	}
-
-	upper := true
-	for i, c := range a {
-		// Canonicalize: first letter upper case
-		// and upper case after each dash.
-		// (Host, User-Agent, If-Modified-Since).
-		// MIME headers are ASCII only, so no Unicode issues.
-		if upper && 'a' <= c && c <= 'z' {
-			c -= toLower
-		} else if !upper && 'A' <= c && c <= 'Z' {
-			c += toLower
-		}
-		a[i] = c
-		upper = c == '-' // for next time
-	}
-	// The compiler recognizes m[string(byteSlice)] as a special
-	// case, so a copy of a's bytes into a new string does not
-	// happen in this map lookup:
-	if v := commonHeader[string(a)]; v != "" {
-		return v
-	}
-	return string(a)
-}
-
-// ReadResponse reads and returns an HTTP response from r.
-// The req parameter optionally specifies the Request that corresponds
-// to this Response. If nil, a GET request is assumed.
-// Clients must call resp.Body.Close when finished reading resp.Body.
-// After that call, clients can inspect resp.Trailer to find key/value
-// pairs included in the response trailer.
-func ReadResponse(r *bufio.Reader, req *Request) (*Response, error) {
-	tp := textproto.NewReader(r)
-	resp := &Response{
-		Request: req,
-	}
-
-	// Parse the first line of the response.
-	line, err := tp.ReadLine()
-	if err != nil {
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF
-		}
-		return nil, err
-	}
-	f := strings.SplitN(line, " ", 3)
-	if len(f) < 2 {
-		return nil, &badStringError{"malformed HTTP response", line}
-	}
-	reasonPhrase := ""
-	if len(f) > 2 {
-		reasonPhrase = f[2]
-	}
-	resp.Status = f[1] + " " + reasonPhrase
-	resp.StatusCode, err = strconv.Atoi(f[1])
-	if err != nil {
-		return nil, &badStringError{"malformed HTTP status code", f[1]}
-	}
-
-	resp.Proto = f[0]
-	var ok bool
-	if resp.ProtoMajor, resp.ProtoMinor, ok = ParseHTTPVersion(resp.Proto); !ok {
-		return nil, &badStringError{"malformed HTTP version", resp.Proto}
-	}
-
-	// Parse the response headers.
-	mimeHeader, err := tp.ReadMIMEHeader()
-	if err != nil {
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF
-		}
-		return nil, err
-	}
-	resp.Header = Header(mimeHeader)
-
-	fixPragmaCacheControl(resp.Header)
-
-	err = readTransfer(resp, r)
-	if err != nil {
-		return nil, err
-	}
-
-	return resp, nil
-}
-*/

@@ -21,25 +21,35 @@ import (
 )
 
 var (
-	ErrVersionBlock = errors.New("webarchive: invalid ARC version block")
-	ErrARCHeader    = errors.New("webarchive: invalid ARC header")
-	ErrNotSlicer    = errors.New("webarchive: underlying reader must be a slicer to expose Slice and EOFSlice methods")
-	ErrWARCHeader   = errors.New("webarchive: invalid WARC header")
-	ErrWARCRecord   = errors.New("webarchive: error parsing WARC record")
+	ErrNotWebarchive = errors.New("webarchive: not a valid ARC or WARC file")
+	ErrVersionBlock  = errors.New("webarchive: invalid ARC version block")
+	ErrARCHeader     = errors.New("webarchive: invalid ARC header")
+	ErrNotSlicer     = errors.New("webarchive: underlying reader must be a slicer to expose Slice and EOFSlice methods")
+	ErrWARCHeader    = errors.New("webarchive: invalid WARC header")
+	ErrWARCRecord    = errors.New("webarchive: error parsing WARC record")
 )
 
 func NewReader(r io.Reader) (Reader, error) {
-	w, err := NewWARCReader(r)
+	rdr, err := newReader(r)
 	if err != nil {
-		return NewARCReader(r)
+		return nil, err
 	}
-	return w, err
+	w, err := newWARCReader(rdr)
+	if err != nil {
+		a, err := newARCReader(rdr)
+		if err != nil {
+			return nil, ErrNotWebarchive
+		}
+		return a, nil
+	}
+	return w, nil
 }
 
 type Reader interface {
 	Reset(io.Reader) error
 	Next() (Record, error)
 	NextPayload() (Record, error) // skip non-resonse/resource records; merge continuations; strip non-body content from record
+	Close() error
 }
 
 type Record interface {

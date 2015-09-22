@@ -93,7 +93,15 @@ type ARCReader struct {
 }
 
 func NewARCReader(r io.Reader) (*ARCReader, error) {
-	arc := &ARCReader{reader: newReader(r)}
+	rdr, err := newReader(r)
+	if err != nil {
+		return nil, err
+	}
+	return newARCReader(rdr)
+}
+
+func newARCReader(r *reader) (*ARCReader, error) {
+	arc := &ARCReader{reader: r}
 	var err error
 	arc.ARC, err = arc.readVersionBlock()
 	return arc, err
@@ -107,19 +115,19 @@ func (a *ARCReader) Reset(r io.Reader) error {
 }
 
 func (a *ARCReader) Next() (Record, error) {
-	// advance if haven't read the previous record
-	if a.thisIdx < a.sz {
-		if a.slicer {
-			a.idx += a.sz - a.thisIdx
-		} else {
-			discard(a.buf, int(a.sz-a.thisIdx))
-		}
-	}
-	u, err := a.readURL()
+	buf, err := a.next()
 	if err != nil {
 		return nil, err
 	}
-	a.ARCHeader = u
+	parts := bytes.Split(bytes.TrimSpace(buf), []byte(" "))
+	if a.Version == 1 {
+		a.ARCHeader, err = makeUrl1(parts)
+	} else {
+		a.ARCHeader, err = makeUrl2(parts)
+	}
+	if err != nil {
+		return nil, err
+	}
 	a.thisIdx, a.sz = 0, a.Size()
 	return a, err
 }
@@ -180,21 +188,6 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 		Version:    version,
 		OriginCode: string(bytes.TrimSpace(line2[len(line2)-1])),
 	}, nil
-}
-
-func (r *ARCReader) readURL() (ARCHeader, error) {
-	var buf []byte
-	var err error
-	for buf, err = r.readLine(); err == nil && len(bytes.TrimSpace(buf)) == 0; buf, err = r.readLine() {
-	}
-	if err != nil {
-		return nil, err
-	}
-	parts := bytes.Split(bytes.TrimSpace(buf), []byte(" "))
-	if r.Version == 1 {
-		return makeUrl1(parts)
-	}
-	return makeUrl2(parts)
 }
 
 func makeUrl1(p [][]byte) (*URL1, error) {
