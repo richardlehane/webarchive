@@ -53,7 +53,7 @@ func (r *reader) Read(p []byte) (int, error) {
 	if !r.slicer {
 		return fullRead(r.buf, p[:l])
 	}
-	buf, err := r.Slice(r.idx, l)
+	buf, err := r.src.(slicer).Slice(r.idx, l)
 	l = copy(p, buf)
 	r.idx += int64(l)
 	return l, err
@@ -198,7 +198,7 @@ func (r *reader) next() ([]byte, error) {
 
 func (r *reader) readLine() ([]byte, error) {
 	if r.slicer {
-		l := 1024
+		l := 100
 		for {
 			slc, err := r.src.(slicer).Slice(r.idx, l)
 			i := bytes.IndexByte(slc, '\n')
@@ -209,7 +209,7 @@ func (r *reader) readLine() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			l += 1024
+			l += 100
 		}
 	}
 	return r.buf.ReadBytes('\n')
@@ -220,20 +220,28 @@ func (r *reader) readLine() ([]byte, error) {
 func (r *reader) storeLines(i int) ([]byte, error) {
 	if r.slicer {
 		start := r.idx - int64(i)
-		l := 1024
+		l := 1000
 		for {
 			slc, err := r.src.(slicer).Slice(r.idx, l)
-			i := bytes.IndexByte(slc, '\n')
-			if i > -1 {
-				r.idx += int64(i) + 1
-				if i < 3 {
-					return r.src.(slicer).Slice(start, int(r.idx-start))
+			if len(slc) == 0 {
+				return nil, err
+			}
+			var j int
+			for {
+				i := bytes.IndexByte(slc[j:], '\n')
+				if i > -1 {
+					j += i + 1
+					r.idx += int64(i) + 1
+					if i < 3 {
+						slc, err = r.src.(slicer).Slice(start, int(r.idx-start))
+						return slc, err
+					}
+				} else {
+					j = 0
+					break
 				}
 			}
-			if err != nil {
-				return slc, err
-			}
-			l += 1024
+			l += 1000
 		}
 	}
 	if r.store == nil {
