@@ -138,12 +138,11 @@ func (a *ARCReader) NextPayload() (Record, error) {
 		return r, err
 	}
 	if v, err := a.peek(5); err == nil && string(v) == "HTTP/" {
-		f, err := a.storeLines(0)
+		f, err := a.storeLines(0, true)
 		if err != nil {
 			return r, err
 		}
 		a.setfields(f)
-		a.thisIdx += int64(len(f))
 	}
 	return r, err
 }

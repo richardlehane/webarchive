@@ -71,7 +71,7 @@ func (w *WARCReader) Next() (Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.fields, err = w.storeLines(0)
+	w.fields, err = w.storeLines(0, false)
 	if err != nil {
 		return nil, ErrWARCRecord
 	}
@@ -104,6 +104,9 @@ func (w *WARCReader) NextPayload() (Record, error) {
 			return r, err
 		}
 		if w.segment > 0 {
+			if w.continuations == nil {
+				w.continuations = make(continuations)
+			}
 			if c, ok := w.continuations.put(w); ok {
 				return c, nil
 			}
@@ -117,8 +120,7 @@ func (w *WARCReader) NextPayload() (Record, error) {
 		case "response":
 			if v, err := w.peek(5); err == nil && string(v) == "HTTP/" {
 				l := len(w.fields)
-				w.fields, err = w.storeLines(l)
-				w.thisIdx += int64(len(w.fields) - l)
+				w.fields, err = w.storeLines(l, true)
 			}
 			return r, err
 		}

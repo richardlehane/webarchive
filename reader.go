@@ -35,9 +35,9 @@ type reader struct {
 	buf     *bufio.Reader // buf will point to sbuf, unless src is gzip
 	closer  io.ReadCloser // if gzip, hold reference to close it
 	slicer  bool          // does the source conform to the slicer interface? (siegfried related: siegfried buffers have this method)
-	idx     int64         // read index within the entire file
+	idx     int64         // read index within the entire file - stays at the start of the Record/Payload until Next is called
 	thisIdx int64         // read index within the current record
-	sz      int64         // size of the current record
+	sz      int64         // size of the current record (Read area)
 	store   []byte        // used as temp store for fields
 }
 
@@ -53,9 +53,8 @@ func (r *reader) Read(p []byte) (int, error) {
 	if !r.slicer {
 		return fullRead(r.buf, p[:l])
 	}
-	buf, err := r.src.(slicer).Slice(r.idx, l)
+	buf, err := r.src.(slicer).Slice(r.idx+r.thisIdx-int64(l), l)
 	l = copy(p, buf)
-	r.idx += int64(l)
 	return l, err
 }
 
@@ -180,12 +179,9 @@ func (r *reader) peek(i int) ([]byte, error) {
 
 func (r *reader) next() ([]byte, error) {
 	// advance if haven't read the previous record
-	if r.thisIdx < r.sz {
-		if r.slicer {
-			r.idx += r.sz - r.thisIdx
-		} else {
-			discard(r.buf, int(r.sz-r.thisIdx))
-		}
+	r.idx += r.sz
+	if r.thisIdx < r.sz && !r.slicer {
+		discard(r.buf, int(r.sz-r.thisIdx))
 	}
 	var slc []byte
 	var err error
@@ -196,6 +192,7 @@ func (r *reader) next() ([]byte, error) {
 	return slc, err
 }
 
+// if a slicer - advance r.idx
 func (r *reader) readLine() ([]byte, error) {
 	if r.slicer {
 		l := 100
@@ -206,7 +203,10 @@ func (r *reader) readLine() ([]byte, error) {
 				r.idx += int64(i) + 1
 				return slc[:i+1], nil
 			}
-			if err != nil {
+			if err != nil || len(slc) < l {
+				if err == nil {
+					err = io.EOF
+				}
 				return nil, err
 			}
 			l += 100
@@ -215,9 +215,24 @@ func (r *reader) readLine() ([]byte, error) {
 	return r.buf.ReadBytes('\n')
 }
 
+func indexBlankLine(buf []byte) int {
+	var i int
+	for {
+		idx := bytes.IndexByte(buf[i:], '\n')
+		if idx > -1 {
+			i += idx + 1
+			if idx < 3 {
+				return i
+			}
+		} else {
+			return -1
+		}
+	}
+}
+
 // read to first blank line and return a byte slice containing that content
 // this is used to grab WARC and HTTP header blocks
-func (r *reader) storeLines(i int) ([]byte, error) {
+func (r *reader) storeLines(i int, alter bool) ([]byte, error) {
 	if r.slicer {
 		start := r.idx - int64(i)
 		l := 1000
@@ -226,20 +241,16 @@ func (r *reader) storeLines(i int) ([]byte, error) {
 			if len(slc) == 0 {
 				return nil, err
 			}
-			var j int
-			for {
-				i := bytes.IndexByte(slc[j:], '\n')
-				if i > -1 {
-					j += i + 1
-					r.idx += int64(i) + 1
-					if i < 3 {
-						slc, err = r.src.(slicer).Slice(start, int(r.idx-start))
-						return slc, err
-					}
-				} else {
-					j = 0
-					break
+			idx := indexBlankLine(slc)
+			if idx > -1 {
+				r.idx += int64(idx)
+				if alter {
+					r.sz -= int64(idx)
 				}
+				return r.src.(slicer).Slice(start, int(r.idx-start))
+			}
+			if len(slc) < l {
+				return nil, io.EOF
 			}
 			l += 1000
 		}
@@ -247,6 +258,7 @@ func (r *reader) storeLines(i int) ([]byte, error) {
 	if r.store == nil {
 		r.store = make([]byte, 4096)
 	}
+	alterSz := i
 	for {
 		slc, err := r.buf.ReadBytes('\n')
 		if err != nil {
@@ -262,6 +274,9 @@ func (r *reader) storeLines(i int) ([]byte, error) {
 		}
 		i += len(slc)
 		if len(slc) < 3 {
+			if alter {
+				r.sz -= int64(i - alterSz)
+			}
 			return r.store[:i], err
 		}
 	}
@@ -282,11 +297,11 @@ func readline(buf []byte) ([]byte, int) {
 	nl := bytes.IndexByte(buf, '\n')
 	switch {
 	case nl < 0:
-		return bytes.TrimSpace(buf), 0
+		return buf, 0
 	case nl == len(buf)-1:
-		return bytes.TrimSpace(buf[:nl]), 0
+		return buf[:nl], 0
 	default:
-		return bytes.TrimSpace(buf[:nl]), nl + 1
+		return buf[:nl], nl + 1
 	}
 }
 
@@ -330,12 +345,38 @@ func getLines(buf []byte) func() []byte {
 	}
 }
 
+var WARCHeaders = map[string]string{
+	"Warc-Type":                    "WARC-Type",
+	"Warc-Record-Id":               "WARC-Record-ID",
+	"Warc-Date":                    "WARC-Date",
+	"Content-Length":               "Content-Length",
+	"Content-Type":                 "Content-Type",
+	"Warc-Concurrent-To":           "WARC-Concurrent-To",
+	"Warc-Block-Digest":            "WARC-Block-Digest",
+	"Warc-Payload-Digest":          "WARC-Payload-Digest",
+	"Warc-Ip-Address":              "WARC-IP-Address",
+	"Warc-Refers-To":               "WARC-Refers-To",
+	"Warc-Target-Uri":              "WARC-Target-URI",
+	"Warc-Truncated":               "WARC-Truncated",
+	"Warc-Warcinfo-Id":             "WARC-Warcinfo-ID",
+	"Warc-Filename":                "WARC-Filename",
+	"Warc-Profile":                 "WARC-Profile",
+	"Warc-Identified-Payload-Type": "WARC-Identified-Payload-Type",
+	"Warc-Segment-Origin-Id":       "WARC-Segment-Origin-ID",
+	"Warc-Segment-Number":          "WARC-Segment-Number",
+	"Warc-Segment-Total-Length":    "WARC-Segment-Total-Length",
+}
+
 func normaliseKey(k []byte) string {
 	parts := bytes.Split(k, []byte("-"))
 	for i, v := range parts {
-		parts[i] = []byte(strings.Title(string(v)))
+		parts[i] = []byte(strings.Title(strings.ToLower(string(v))))
 	}
-	return string(bytes.Join(parts, []byte("-")))
+	s := string(bytes.Join(parts, []byte("-")))
+	if w := WARCHeaders[s]; w != "" {
+		return w
+	}
+	return s
 }
 
 func getSelectValues(buf []byte, vals ...string) []string {
@@ -442,6 +483,15 @@ func (c *continuation) complete() bool {
 		idx += len(b)
 	}
 	c.idx, c.start = len(c.fields), len(c.fields)
+	c.fields = c.buf[:c.idx]
+	if len(c.buf[c.idx:]) > 5 && string(c.buf[c.idx:c.idx+5]) == "HTTP/" {
+		bi := indexBlankLine(c.buf[c.idx:])
+		if bi > -1 {
+			c.idx += bi
+			c.start += bi
+			c.fields = c.buf[:c.idx]
+		}
+	}
 	return true
 }
 

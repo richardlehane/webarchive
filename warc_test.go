@@ -1,16 +1,12 @@
 package webarchive
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"testing"
 	"time"
-
-	"github.com/richardlehane/siegfried/pkg/core/siegreader"
 )
 
 func TestWARC(t *testing.T) {
@@ -26,36 +22,6 @@ func TestWARC(t *testing.T) {
 	}
 	if rec.Date().Format(time.RFC3339) != "2015-07-08T21:55:13Z" {
 		t.Errorf("expecting 2015-07-08T21:55:13Z, got %v", rec.Date())
-	}
-}
-
-func TestReaders(t *testing.T) {
-	buf, _ := ioutil.ReadFile("examples/hello-world.warc")
-	rdr := bytes.NewReader(buf)
-	rdr2 := bytes.NewReader(buf)
-	buffers := siegreader.New()
-	sbuf, _ := buffers.Get(rdr)
-	wrdr, _ := NewWARCReader(siegreader.ReaderFrom(sbuf))
-	wrdr2, _ := NewWARCReader(rdr2)
-	var count int
-	for {
-		count++
-		r1, err1 := wrdr.Next()
-		r2, err2 := wrdr2.Next()
-		if err1 != err2 {
-			t.Fatalf("unequal errors %v, %v, %d", err1, err2, count)
-		}
-		if err1 != nil {
-			break
-		}
-		if r1.URL() != r2.URL() {
-			t.Fatalf("unequal urls, %s, %s, %d", r1.URL(), r2.URL(), count)
-		}
-		b1, _ := ioutil.ReadAll(r1)
-		b2, _ := ioutil.ReadAll(r2)
-		if !bytes.Equal(b1, b2) {
-			t.Fatalf("reads aren't equal at %d:\nfirst read:\n%s\n\nsecond read:\n%s\n\n", count, string(b1), string(b2))
-		}
 	}
 }
 
