@@ -36,10 +36,10 @@ err = rdr.Reset(f)
 // the Close() method should be used if you pass in gzipped files, it is a nop for 
 // non-gzipped files
 defer rdr.Close()
-// NextPayload() skips non-resource, conversion or response records and merges continuations 
-// into single records. It also strips HTTP headers from response records. After stripping, 
-// those HTTP headers are available alongside
-// the WARC headers in the record.Fields() map.
+// NextPayload() skips non-resource, conversion or response records and merges 
+// continuations into single records. It also strips HTTP headers from response 
+// records. After stripping, those HTTP headers are available alongside the WARC 
+// headers in the record.Fields() map.
 for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload() {
   i, err := io.Copy(ioutil.Discard, record)
   if err != nil {
