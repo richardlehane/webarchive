@@ -50,18 +50,19 @@ func NewWARCReader(r io.Reader) (*WARCReader, error) {
 }
 
 func newWARCReader(r *reader) (*WARCReader, error) {
-	v, err := r.peek(4)
-	if err != nil {
-		return nil, err
-	}
-	if string(v) != "WARC" {
-		return nil, ErrWARCHeader
-	}
-	return &WARCReader{&WARCHeader{}, r, nil}, nil
+	w := &WARCReader{&WARCHeader{}, r, nil}
+	return w, w.reset()
 }
 
 func (w *WARCReader) Reset(r io.Reader) error {
 	w.reader.reset(r)
+	return w.reset()
+}
+
+func (w *WARCReader) reset() error {
+	if v, err := r.peek(4); err != nil || string(v) != "WARC" {
+		return ErrWARCHeader
+	}
 	return nil
 }
 

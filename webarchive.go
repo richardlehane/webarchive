@@ -21,6 +21,7 @@ import (
 )
 
 var (
+	ErrReset         = errors.New("webarchive: attempted reset on nil MultiReader, use NewReader() first")
 	ErrNotWebarchive = errors.New("webarchive: not a valid ARC or WARC file")
 	ErrVersionBlock  = errors.New("webarchive: invalid ARC version block")
 	ErrARCHeader     = errors.New("webarchive: invalid ARC header")
@@ -28,6 +29,40 @@ var (
 	ErrWARCHeader    = errors.New("webarchive: invalid WARC header")
 	ErrWARCRecord    = errors.New("webarchive: error parsing WARC record")
 )
+
+type MultiReader struct {
+  r *reader
+	a *ARCReader
+	w *WARCReader
+	Reader
+}
+
+func (m *MultiReader) Reset(r io.Reader) error {
+	if m == nil {
+		return ErrReset
+	}
+  err := m.r.reset(r)
+  if err != nil {
+    return err
+  }
+	if m.w == nil {
+		m.w, err = newWARCReader(m.r)
+  } else {
+    err =  m.w.reset()
+  }
+  if err == nil {
+    return nil 
+  }
+	if m.a == nil {
+		m.a, err = newARCReader(rdr)
+	} else {
+		err = m.a.reset()
+	}
+	if err == nil {
+		return nil
+	}
+	return ErrNotWebarchive
+}
 
 func NewReader(r io.Reader) (Reader, error) {
 	rdr, err := newReader(r)
@@ -40,9 +75,9 @@ func NewReader(r io.Reader) (Reader, error) {
 		if err != nil {
 			return nil, ErrNotWebarchive
 		}
-		return a, nil
+		return &MultiReader{r: rdr, a: a, Reader: a}, nil
 	}
-	return w, nil
+	return &MultiReader{r: rdr, w: w, Reader: w}, nil
 }
 
 type Reader interface {

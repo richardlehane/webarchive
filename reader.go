@@ -33,7 +33,7 @@ type reader struct {
 	src     io.Reader     // reference to the provided reader
 	sbuf    *bufio.Reader // buffer src if not a slicer
 	buf     *bufio.Reader // buf will point to sbuf, unless src is gzip
-	closer  io.ReadCloser // if gzip, hold reference to close it
+	closer  *gzip.Reader  // if gzip, hold reference to close or reset it
 	slicer  bool          // does the source conform to the slicer interface? (siegfried related: siegfried buffers have this method)
 	idx     int64         // read index within the entire file - stays at the start of the Record/Payload until Next is called
 	thisIdx int64         // read index within the current record
@@ -139,12 +139,15 @@ func isgzip(buf []byte) bool {
 
 func (r *reader) unzip() error {
 	if buf, err := r.srcpeek(3); err == nil && isgzip(buf) {
-		var gr *gzip.Reader
-		if r.slicer {
-			gr, err = gzip.NewReader(r.src)
-		} else {
-			gr, err = gzip.NewReader(r.sbuf)
-		}
+		var rdr io.Reader = r.sbuf
+    if r.slicer {
+      rdr = r.src
+		} 
+    if r.closer == nil {
+			  r.closer, err = gzip.NewReader(rdr)
+    } else {
+        err = r.closer.Reset(rdr)
+    }
 		if err != nil {
 			return err
 		}

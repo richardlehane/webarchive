@@ -109,7 +109,11 @@ func newARCReader(r *reader) (*ARCReader, error) {
 
 func (a *ARCReader) Reset(r io.Reader) error {
 	a.reader.reset(r)
-	var err error
+	return a.reset()
+}
+
+func (a *ARCReader) reset() error {
+  var err error
 	a.ARC, err = a.readVersionBlock()
 	return err
 }
