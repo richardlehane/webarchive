@@ -16,7 +16,6 @@ package webarchive
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"strconv"
 	"time"
@@ -113,7 +112,7 @@ func (a *ARCReader) Reset(r io.Reader) error {
 }
 
 func (a *ARCReader) reset() error {
-  var err error
+	var err error
 	a.ARC, err = a.readVersionBlock()
 	return err
 }
@@ -195,7 +194,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 
 func makeUrl1(p [][]byte) (*URL1, error) {
 	if len(p) < 5 {
-		return nil, errors.New(string(p[0]) + string(p[1]))
+		return nil, ErrARCHeader
 	}
 	date, err := time.Parse(timefmt, string(p[2]))
 	if err != nil {

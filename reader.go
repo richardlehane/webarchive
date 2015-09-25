@@ -140,26 +140,24 @@ func isgzip(buf []byte) bool {
 func (r *reader) unzip() error {
 	if buf, err := r.srcpeek(3); err == nil && isgzip(buf) {
 		var rdr io.Reader = r.sbuf
-    if r.slicer {
-      rdr = r.src
-		} 
-    if r.closer == nil {
-			  r.closer, err = gzip.NewReader(rdr)
-    } else {
-        err = r.closer.Reset(rdr)
-    }
+		if r.slicer {
+			rdr = r.src
+		}
+		if r.closer == nil {
+			r.closer, err = gzip.NewReader(rdr)
+		} else {
+			err = r.closer.Reset(rdr)
+		}
 		if err != nil {
 			return err
 		}
-		r.closer = gr
 		if r.buf == nil || r.buf == r.sbuf {
-			r.buf = bufio.NewReader(gr)
+			r.buf = bufio.NewReader(r.closer)
 		} else {
-			r.buf.Reset(gr)
+			r.buf.Reset(r.closer)
 		}
 		r.slicer = false
 	} else {
-		r.closer = nil
 		r.buf = r.sbuf
 	}
 	return nil
@@ -448,6 +446,7 @@ func (c continuations) put(w *WARCReader) (Record, bool) {
 	if len(cr.bufs) < w.WARCHeader.segment {
 		nb := make([][]byte, w.WARCHeader.segment)
 		copy(nb, cr.bufs)
+		cr.bufs = nb
 	}
 	cr.bufs[w.WARCHeader.segment-1], _ = ioutil.ReadAll(w)
 	if !cr.complete() {

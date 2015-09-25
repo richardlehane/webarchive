@@ -28,10 +28,11 @@ var (
 	ErrNotSlicer     = errors.New("webarchive: underlying reader must be a slicer to expose Slice and EOFSlice methods")
 	ErrWARCHeader    = errors.New("webarchive: invalid WARC header")
 	ErrWARCRecord    = errors.New("webarchive: error parsing WARC record")
+	ErrDiscard       = errors.New("webarchive: failed to do full read during discard")
 )
 
 type MultiReader struct {
-  r *reader
+	r *reader
 	a *ARCReader
 	w *WARCReader
 	Reader
@@ -41,24 +42,26 @@ func (m *MultiReader) Reset(r io.Reader) error {
 	if m == nil {
 		return ErrReset
 	}
-  err := m.r.reset(r)
-  if err != nil {
-    return err
-  }
+	err := m.r.reset(r)
+	if err != nil {
+		return err
+	}
 	if m.w == nil {
 		m.w, err = newWARCReader(m.r)
-  } else {
-    err =  m.w.reset()
-  }
-  if err == nil {
-    return nil 
-  }
+	} else {
+		err = m.w.reset()
+	}
+	if err == nil {
+		m.Reader = m.w
+		return nil
+	}
 	if m.a == nil {
-		m.a, err = newARCReader(rdr)
+		m.a, err = newARCReader(m.r)
 	} else {
 		err = m.a.reset()
 	}
 	if err == nil {
+		m.Reader = m.a
 		return nil
 	}
 	return ErrNotWebarchive

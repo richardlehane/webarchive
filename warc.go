@@ -60,7 +60,7 @@ func (w *WARCReader) Reset(r io.Reader) error {
 }
 
 func (w *WARCReader) reset() error {
-	if v, err := r.peek(4); err != nil || string(v) != "WARC" {
+	if v, err := w.peek(4); err != nil || string(v) != "WARC" {
 		return ErrWARCHeader
 	}
 	return nil

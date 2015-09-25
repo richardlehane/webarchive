@@ -2,7 +2,10 @@ package webarchive
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,90 +15,87 @@ import (
 )
 
 func ExampleBlackbook() {
-f, _ := os.Open("examples/hello-world.arc")
-// NewReader(io.Reader) can be used to read WARC, ARC or gzipped WARC or ARC files
-rdr, err := webarchive.NewReader(f)
-if err != nil {
-  log.Fatal(err)
-}
-// use Next() to iterate through all records in the WARC or ARC file
-for record, err := rdr.Next(); err == nil; record, err = rdr.Next() {
-  // records implement the io.Reader interface
-  buf, err := ioutil.ReadAll(record)
-  if err != nil {
-    log.Fatal(err)
-  }
-  // records also have URL(), Date() and Size() methods
-  fmt.Printf("URL: %s, Date: %v, Size: %d\n", record.URL(), record.Date(), record.Size())
-  // the Fields() method returns all the fields in the WARC or ARC record
-  for key, values := range record.Fields() {
-    fmt.Printf("Field key: %s, Field values: %v\n", key, values)
-  }
-}
-f, _ = os.Open("examples/hello-world.warc.gz")
-defer f.Close()
-// readers can Reset() to reuse the underlying buffers
-err = rdr.Reset(f)
-// the Close() method should be used if you pass in gzipped files, it is a nop for non-gzipped files
-defer rdr.Close()
-// NextPayload() skips non-resource, conversion or response records and merges continuations into single records. 
-// It also strips HTTP headers from response records. After stripping, those HTTP headers are available alongside
-// the WARC headers in the record.Fields() map.
-for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload() {
-  buf, err := ioutil.ReadAll(record)
-  if err != nil {
-    log.Fatal(err)
-  }
-  fmt.Print(string(buf))
-  // any skipped HTTP headers can be retrieved from the Fields() map
-  for key, values := range record.Fields() {
-    fmt.Printf("Field key: %s, Field values: %v\n", key, values)
-  }
-}
-	// Output:
-	// 20080430204825
-	// www.archive.org.	589	IN	A	207.241.229.39
-	// 298
+	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
+	// NewReader(io.Reader) can be used to read WARC, ARC or gzipped WARC or ARC files
+	rdr, err := NewReader(f)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// use Next() to iterate through all records in the WARC or ARC file
+	for record, err := rdr.Next(); err == nil; record, err = rdr.Next() {
+		// records implement the io.Reader interface
+		i, err := io.Copy(ioutil.Discard, record)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Read: %d bytes\n", i)
+		// records also have URL(), Date() and Size() methods
+		fmt.Printf("URL: %s, Date: %v, Size: %d\n", record.URL(), record.Date(), record.Size())
+		// the Fields() method returns all the fields in the WARC or ARC record
+		for key, values := range record.Fields() {
+			fmt.Printf("Field key: %s, Field values: %v\n", key, values)
+		}
+	}
+	f, _ = os.Open("examplesIAH-20080430204825-00000-blackbook.warc.gz")
+	defer f.Close()
+	// readers can Reset() to reuse the underlying buffers
+	err = rdr.Reset(f)
+	// the Close() method should be used if you pass in gzipped files, it is a nop for non-gzipped files
+	defer rdr.Close()
+	// NextPayload() skips non-resource, conversion or response records and merges continuations into single records.
+	// It also strips HTTP headers from response records. After stripping, those HTTP headers are available alongside
+	// the WARC headers in the record.Fields() map.
+	for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload() {
+		i, err := io.Copy(ioutil.Discard, record)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Read: %d bytes\n", i)
+		// any skipped HTTP headers can be retrieved from the Fields() map
+		for key, values := range record.Fields() {
+			fmt.Printf("Field key: %s, Field values: %v\n", key, values)
+		}
+	}
 }
 
-func opener() func (string) (Reader, Reader) {
-    var wrdr, wrdr2 Reader
-    buffers := siegreader.New()
-    return func(path string) (Reader, Reader) {
-    buf, _ := ioutil.ReadFile(path)
+func opener(t *testing.T) func(string) (Reader, Reader) {
+	var wrdr, wrdr2 Reader
+	buffers := siegreader.New()
+	return func(path string) (Reader, Reader) {
+		buf, _ := ioutil.ReadFile(path)
 		rdr := bytes.NewReader(buf)
 		rdr2 := bytes.NewReader(buf)
 		sbuf, _ := buffers.Get(rdr)
-    var err error
+		var err error
 		if wrdr == nil {
-    wrdr, err = NewReader(siegreader.ReaderFrom(sbuf))
-    } else {
-      err = wrdr.Reset(siegreader.ReaderFrom(sbuf))
-    }
+			wrdr, err = NewReader(siegreader.ReaderFrom(sbuf))
+		} else {
+			err = wrdr.Reset(siegreader.ReaderFrom(sbuf))
+		}
 		if err != nil {
 			if strings.Index(path, "invalid") != -1 {
-				return nil
+				return nil, nil
 			}
 			t.Fatalf("test case: %s; error: %v", path, err)
 		}
-    if wrdr2 == nil {
-		wrdr2, err = NewReader(rdr2)
-    } else {
-     err = wrdr2.Reset(rdr2)
-    }
+		if wrdr2 == nil {
+			wrdr2, err = NewReader(rdr2)
+		} else {
+			err = wrdr2.Reset(rdr2)
+		}
 		if err != nil {
 			if strings.Index(path, "invalid") != -1 {
-				return nil
+				return nil, nil
 			}
 			t.Fatalf("test case: %s; error: %v", path, err)
 		}
-    return wrdr, wrdr2
-    }
+		return wrdr, wrdr2
+	}
 }
 
 func TestReaders(t *testing.T) {
-  open := opener()
-  wf := func(path string, info os.FileInfo, err error) error {
+	open := opener(t)
+	wf := func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
@@ -107,6 +107,9 @@ func TestReaders(t *testing.T) {
 			gz = true
 		}
 		wrdr, wrdr2 := open(path)
+		if wrdr == nil {
+			return nil
+		}
 		var count int
 		for {
 			count++
@@ -138,9 +141,10 @@ func TestReaders(t *testing.T) {
 			}
 		}
 		count = 0
-		wrdr, _ = NewReader(siegreader.ReaderFrom(sbuf))
-		rdr2 = bytes.NewReader(buf)
-		wrdr2, _ = NewReader(rdr2)
+		wrdr, wrdr2 = open(path)
+		if wrdr == nil {
+			return nil
+		}
 		for {
 			count++
 			r1, err1 := wrdr.NextPayload()
@@ -171,4 +175,3 @@ func TestReaders(t *testing.T) {
 	}
 	filepath.Walk("examples", wf)
 }
-
