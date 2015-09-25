@@ -41,6 +41,10 @@ type reader struct {
 	store   []byte        // used as temp store for fields
 }
 
+func (r *reader) Size() int64 {
+	return r.sz
+}
+
 func (r *reader) Read(p []byte) (int, error) {
 	if r.thisIdx >= r.sz {
 		return 0, io.EOF
@@ -495,6 +499,10 @@ func (c *continuation) complete() bool {
 		}
 	}
 	return true
+}
+
+func (c *continuation) Size() int64 {
+	return int64(len(c.buf) - c.start)
 }
 
 func (c *continuation) Read(p []byte) (int, error) {

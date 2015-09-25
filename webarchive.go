@@ -98,11 +98,11 @@ type Record interface {
 type Header interface {
 	URL() string
 	Date() time.Time
-	Size() int64
 	Fields() map[string][]string
 }
 
 type Content interface {
+	Size() int64
 	Read(p []byte) (n int, err error)
 	Slice(off int64, l int) ([]byte, error)
 	EofSlice(off int64, l int) ([]byte, error)

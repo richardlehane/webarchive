@@ -25,6 +25,7 @@ const timefmt = "20060102150405"
 
 type ARCHeader interface {
 	Header
+	size() int64
 	setfields([]byte)
 }
 
@@ -42,13 +43,12 @@ type URL1 struct {
 	IP     string    // dotted-quad (eg 192.216.46.98 or 0.0.0.0)
 	date   time.Time //  YYYYMMDDhhmmss (Greenwich Mean Time)
 	MIME   string    // "no-type"|MIME type of data (e.g., "text/html")
-	size   int64
+	sz     int64
 	fields []byte
 }
 
 func (u *URL1) URL() string     { return u.url }
 func (u *URL1) Date() time.Time { return u.date }
-func (u *URL1) Size() int64     { return u.size }
 func (u *URL1) Fields() map[string][]string {
 	var fields map[string][]string
 	if len(u.fields) > 0 {
@@ -60,9 +60,10 @@ func (u *URL1) Fields() map[string][]string {
 	fields["IP"] = []string{u.IP}
 	fields["Date"] = []string{u.date.Format(timefmt)}
 	fields["MIME"] = []string{u.MIME}
-	fields["Size"] = []string{strconv.FormatInt(u.size, 10)}
+	fields["Size"] = []string{strconv.FormatInt(u.sz, 10)}
 	return fields
 }
+func (u *URL1) size() int64        { return u.sz }
 func (u *URL1) setfields(f []byte) { u.fields = f }
 
 // Version 2 URL record
@@ -131,7 +132,7 @@ func (a *ARCReader) Next() (Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.thisIdx, a.sz = 0, a.Size()
+	a.thisIdx, a.sz = 0, a.size()
 	return a, err
 }
 
@@ -209,7 +210,7 @@ func makeUrl1(p [][]byte) (*URL1, error) {
 		IP:   string(p[1]),
 		date: date,
 		MIME: string(p[3]),
-		size: l,
+		sz:   l,
 	}, nil
 }
 

@@ -24,7 +24,6 @@ type WARCHeader struct {
 	url     string    // WARC-Target-URI
 	ID      string    // WARC-Record-ID
 	date    time.Time // WARC-Date
-	size    int64     // Content-Length
 	Type    string    // WARC-Type
 	segment int       // WARC-Segment-Number
 	fields  []byte
@@ -32,7 +31,6 @@ type WARCHeader struct {
 
 func (h *WARCHeader) URL() string                 { return h.url }
 func (h *WARCHeader) Date() time.Time             { return h.date }
-func (h *WARCHeader) Size() int64                 { return h.size }
 func (h *WARCHeader) Fields() map[string][]string { return getAllValues(h.fields) }
 
 type WARCReader struct {
@@ -82,11 +80,11 @@ func (w *WARCReader) Next() (Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.size, err = strconv.ParseInt(vals[3], 10, 64)
+	w.sz, err = strconv.ParseInt(vals[3], 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	w.thisIdx, w.sz = 0, w.Size()
+	w.thisIdx = 0
 	if vals[5] != "" {
 		w.segment, err = strconv.Atoi(vals[5])
 		if err != nil {
