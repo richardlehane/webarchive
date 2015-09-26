@@ -16,7 +16,7 @@ func TestVersionBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rdr.FileDate.Format(timefmt) != "20080430204825" {
+	if rdr.FileDate.Format(ARCTime) != "20080430204825" {
 		t.Errorf("expecting 20080430204825, got %v", rdr.ARC)
 	}
 	f.Close()
@@ -28,7 +28,7 @@ func TestVersionBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rdr.FileDate.Format(timefmt) != "19960923142103" {
+	if rdr.FileDate.Format(ARCTime) != "19960923142103" {
 		t.Errorf("expecting 19960923142103, got %v", rdr.ARC)
 	}
 }
