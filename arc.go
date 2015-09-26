@@ -21,7 +21,8 @@ import (
 	"time"
 )
 
-const timefmt = "20060102150405"
+// ARCTime is a time format string for the ARC time format
+const ARCTime = "20060102150405"
 
 type ARCHeader interface {
 	Header
@@ -58,7 +59,7 @@ func (u *URL1) Fields() map[string][]string {
 	}
 	fields["URL"] = []string{u.url}
 	fields["IP"] = []string{u.IP}
-	fields["Date"] = []string{u.date.Format(timefmt)}
+	fields["Date"] = []string{u.date.Format(ARCTime)}
 	fields["MIME"] = []string{u.MIME}
 	fields["Size"] = []string{strconv.FormatInt(u.sz, 10)}
 	return fields
@@ -160,7 +161,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 	if len(line1) < 3 {
 		return nil, ErrVersionBlock
 	}
-	t, err := time.Parse(timefmt, string(line1[2]))
+	t, err := time.Parse(ARCTime, string(line1[2]))
 	if err != nil {
 		return nil, ErrVersionBlock
 	}
@@ -197,7 +198,7 @@ func makeUrl1(p [][]byte) (*URL1, error) {
 	if len(p) < 5 {
 		return nil, ErrARCHeader
 	}
-	date, err := time.Parse(timefmt, string(p[2]))
+	date, err := time.Parse(ARCTime, string(p[2]))
 	if err != nil {
 		return nil, ErrARCHeader
 	}
