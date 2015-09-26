@@ -206,7 +206,7 @@ func makeUrl1(p [][]byte) (*URL1, error) {
 		return nil, ErrARCHeader
 	}
 	return &URL1{
-		url:  string(p[2]),
+		url:  string(p[0]),
 		IP:   string(p[1]),
 		date: date,
 		MIME: string(p[3]),
