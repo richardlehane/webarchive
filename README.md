@@ -10,7 +10,7 @@ Example usage:
 ```go
 f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
 // NewReader(io.Reader) can be used to read WARC, ARC or gzipped WARC or ARC files
-rdr, err := NewReader(f)
+rdr, err := webarchive.NewReader(f)
 if err != nil {
   log.Fatal(err)
 }
