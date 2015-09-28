@@ -46,14 +46,20 @@ func ExampleBlackbookARC() {
 	buf := make([]byte, 56)
 	io.ReadFull(rec, buf)
 	var count int
+	arec, ok := rec.(ARCRecord)
+	if !ok {
+		log.Fatal("failure doing ARCRecord interface assertion")
+	}
+	fmt.Println(arec.MIME())
 	for _, err = rdr.NextPayload(); err != io.EOF; _, err = rdr.NextPayload() {
 		if err != nil {
 			log.Fatal(err)
 		}
 		count++
 	}
-	fmt.Printf("%s\n%s%d", rdr.Path, buf, count)
+	fmt.Printf("%s\n%s%d", rdr.FileDesc, buf, count)
 	// Output:
+	// text/dns
 	// filedesc://IAH-20080430204825-00000-blackbook.arc
 	// 20080430204825
 	// www.archive.org.	589	IN	A	207.241.229.39

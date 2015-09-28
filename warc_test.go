@@ -58,6 +58,11 @@ func ExampleBlackbookWARC() {
 	buf := make([]byte, 55)
 	io.ReadFull(rec, buf)
 	var count int
+	wrec, ok := rec.(WARCRecord)
+	if !ok {
+		log.Fatal("failure doing WARCRecord interface assertion")
+	}
+	fmt.Println(wrec.ID())
 	for _, err = rdr.NextPayload(); err != io.EOF; _, err = rdr.NextPayload() {
 		if err != nil {
 			log.Fatal(err)
@@ -66,6 +71,7 @@ func ExampleBlackbookWARC() {
 	}
 	fmt.Printf("%s\n%d", buf, count)
 	// Output:
+	// <urn:uuid:ff728363-2d5f-4f5f-b832-9552de1a6037>
 	// 20080430204825
 	// www.archive.org.	589	IN	A	207.241.229.39
 	// 298

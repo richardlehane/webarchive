@@ -24,33 +24,54 @@ import (
 // ARCTime is a time format string for the ARC time format
 const ARCTime = "20060102150405"
 
-type ARCHeader interface {
+// ARCRecord represents the common fields shared by ARC version 1
+// and ARC version 2 URL record blocks.
+// ARC version 2 URL record blocks have additional fields not exposed
+// here. These fields are available in the Fields() map.
+type ARCRecord interface {
+	IP() string
+	MIME() string
+	Record
+}
+
+// ARC structs represent the Version blocks at the start of ARC files.
+// Provides information about the ARC file as a whole such as version,
+// file path of the archive file, and date creation of the archive file.
+type ARC struct {
+	FileDesc   string    // Original pathname of the archive file
+	Address    string    // IP address of machine that created the archive file
+	FileDate   time.Time // Date the archive file was created
+	Version    int       // ARC version (1 or 2) - this will affect the fields available in the Fields() map
+	OriginCode string    // Name of gathering organization
+}
+
+type ARCReader struct {
+	*ARC
+	*reader
+	arcHeader
+}
+
+type arcHeader interface {
+	IP() string
+	MIME() string
 	Header
 	size() int64
 	setfields([]byte)
 }
 
-type ARC struct {
-	Path       string
-	Address    string
-	FileDate   time.Time // YYYYMMDDhhmmss
-	Version    int
-	OriginCode string
-}
-
 // Version 1 URL record
-type URL1 struct {
+type url1 struct {
 	url    string
-	IP     string    // dotted-quad (eg 192.216.46.98 or 0.0.0.0)
+	ip     string    // dotted-quad (eg 192.216.46.98 or 0.0.0.0)
 	date   time.Time //  YYYYMMDDhhmmss (Greenwich Mean Time)
-	MIME   string    // "no-type"|MIME type of data (e.g., "text/html")
+	mime   string    // "no-type"|MIME type of data (e.g., "text/html")
 	sz     int64
 	fields []byte
 }
 
-func (u *URL1) URL() string     { return u.url }
-func (u *URL1) Date() time.Time { return u.date }
-func (u *URL1) Fields() map[string][]string {
+func (u *url1) URL() string     { return u.url }
+func (u *url1) Date() time.Time { return u.date }
+func (u *url1) Fields() map[string][]string {
 	var fields map[string][]string
 	if len(u.fields) > 0 {
 		fields = getAllValues(u.fields)
@@ -58,39 +79,37 @@ func (u *URL1) Fields() map[string][]string {
 		fields = make(map[string][]string)
 	}
 	fields["URL"] = []string{u.url}
-	fields["IP"] = []string{u.IP}
+	fields["IP"] = []string{u.ip}
 	fields["Date"] = []string{u.date.Format(ARCTime)}
-	fields["MIME"] = []string{u.MIME}
+	fields["MIME"] = []string{u.mime}
 	fields["Size"] = []string{strconv.FormatInt(u.sz, 10)}
 	return fields
 }
-func (u *URL1) size() int64        { return u.sz }
-func (u *URL1) setfields(f []byte) { u.fields = f }
+
+func (u *url1) IP() string   { return u.ip }
+func (u *url1) MIME() string { return u.mime }
+
+func (u *url1) size() int64        { return u.sz }
+func (u *url1) setfields(f []byte) { u.fields = f }
 
 // Version 2 URL record
-type URL2 struct {
-	*URL1
-	StatusCode int
-	Checksum   string
-	Location   string
-	Offset     int64
-	Filename   string
+type url2 struct {
+	*url1
+	statusCode int
+	checksum   string
+	location   string
+	offset     int64
+	filename   string
 }
 
-func (u *URL2) Fields() map[string][]string {
-	fields := u.URL1.Fields()
-	fields["StatusCode"] = []string{strconv.Itoa(u.StatusCode)}
-	fields["Checksum"] = []string{u.Checksum}
-	fields["Location"] = []string{u.Location}
-	fields["Offset"] = []string{strconv.FormatInt(u.Offset, 10)}
-	fields["Filename"] = []string{u.Location}
+func (u *url2) Fields() map[string][]string {
+	fields := u.url1.Fields()
+	fields["StatusCode"] = []string{strconv.Itoa(u.statusCode)}
+	fields["Checksum"] = []string{u.checksum}
+	fields["Location"] = []string{u.location}
+	fields["Offset"] = []string{strconv.FormatInt(u.offset, 10)}
+	fields["Filename"] = []string{u.location}
 	return fields
-}
-
-type ARCReader struct {
-	*ARC
-	*reader
-	ARCHeader
 }
 
 func NewARCReader(r io.Reader) (*ARCReader, error) {
@@ -126,9 +145,9 @@ func (a *ARCReader) Next() (Record, error) {
 	}
 	parts := bytes.Split(bytes.TrimSpace(buf), []byte(" "))
 	if a.Version == 1 {
-		a.ARCHeader, err = makeUrl1(parts)
+		a.arcHeader, err = makeUrl1(parts)
 	} else {
-		a.ARCHeader, err = makeUrl2(parts)
+		a.arcHeader, err = makeUrl2(parts)
 	}
 	if err != nil {
 		return nil, err
@@ -186,7 +205,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 		discard(r.buf, l)
 	}
 	return &ARC{
-		Path:       string(line1[0]),
+		FileDesc:   string(line1[0]),
 		Address:    string(line1[1]),
 		FileDate:   t,
 		Version:    version,
@@ -194,7 +213,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 	}, nil
 }
 
-func makeUrl1(p [][]byte) (*URL1, error) {
+func makeUrl1(p [][]byte) (*url1, error) {
 	if len(p) < 5 {
 		return nil, ErrARCHeader
 	}
@@ -206,16 +225,16 @@ func makeUrl1(p [][]byte) (*URL1, error) {
 	if err != nil {
 		return nil, ErrARCHeader
 	}
-	return &URL1{
+	return &url1{
 		url:  string(p[0]),
-		IP:   string(p[1]),
+		ip:   string(p[1]),
 		date: date,
-		MIME: string(p[3]),
+		mime: string(p[3]),
 		sz:   l,
 	}, nil
 }
 
-func makeUrl2(p [][]byte) (*URL2, error) {
+func makeUrl2(p [][]byte) (*url2, error) {
 	if len(p) != 10 {
 		return nil, ErrARCHeader
 	}
@@ -231,12 +250,12 @@ func makeUrl2(p [][]byte) (*URL2, error) {
 	if err != nil {
 		return nil, ErrARCHeader
 	}
-	return &URL2{
-		URL1:       u1,
-		StatusCode: status,
-		Checksum:   string(p[5]),
-		Location:   string(p[6]),
-		Offset:     offset,
-		Filename:   string(p[8]),
+	return &url2{
+		url1:       u1,
+		statusCode: status,
+		checksum:   string(p[5]),
+		location:   string(p[6]),
+		offset:     offset,
+		filename:   string(p[8]),
 	}, nil
 }

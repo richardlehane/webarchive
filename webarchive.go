@@ -31,6 +31,30 @@ var (
 	ErrDiscard       = errors.New("webarchive: failed to do full read during discard")
 )
 
+type Record interface {
+	Header
+	Content
+}
+
+type Header interface {
+	URL() string
+	Date() time.Time
+	Fields() map[string][]string
+}
+
+type Content interface {
+	Size() int64
+	Read(p []byte) (n int, err error)
+	Slice(off int64, l int) ([]byte, error)
+	EofSlice(off int64, l int) ([]byte, error)
+}
+type Reader interface {
+	Reset(io.Reader) error
+	Next() (Record, error)
+	NextPayload() (Record, error) // skip non-resonse/resource records; merge continuations; strip non-body content from record
+	Close() error
+}
+
 type MultiReader struct {
 	r *reader
 	a *ARCReader
@@ -81,29 +105,4 @@ func NewReader(r io.Reader) (Reader, error) {
 		return &MultiReader{r: rdr, a: a, Reader: a}, nil
 	}
 	return &MultiReader{r: rdr, w: w, Reader: w}, nil
-}
-
-type Reader interface {
-	Reset(io.Reader) error
-	Next() (Record, error)
-	NextPayload() (Record, error) // skip non-resonse/resource records; merge continuations; strip non-body content from record
-	Close() error
-}
-
-type Record interface {
-	Header
-	Content
-}
-
-type Header interface {
-	URL() string
-	Date() time.Time
-	Fields() map[string][]string
-}
-
-type Content interface {
-	Size() int64
-	Read(p []byte) (n int, err error)
-	Slice(off int64, l int) ([]byte, error)
-	EofSlice(off int64, l int) ([]byte, error)
 }

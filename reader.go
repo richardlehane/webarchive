@@ -350,7 +350,7 @@ func getLines(buf []byte) func() []byte {
 	}
 }
 
-var WARCHeaders = map[string]string{
+var warcHeaders = map[string]string{
 	"Warc-Type":                    "WARC-Type",
 	"Warc-Record-Id":               "WARC-Record-ID",
 	"Warc-Date":                    "WARC-Date",
@@ -378,7 +378,7 @@ func normaliseKey(k []byte) string {
 		parts[i] = []byte(strings.Title(strings.ToLower(string(v))))
 	}
 	s := string(bytes.Join(parts, []byte("-")))
-	if w := WARCHeaders[s]; w != "" {
+	if w := warcHeaders[s]; w != "" {
 		return w
 	}
 	return s
@@ -419,40 +419,40 @@ type continuations map[string]*continuation
 func (c continuations) put(w *WARCReader) (Record, bool) {
 	var id string
 	var final bool
-	if w.WARCHeader.segment > 1 {
-		fields := w.WARCHeader.Fields()
+	if w.warcHeader.segment > 1 {
+		fields := w.warcHeader.Fields()
 		s, ok := fields["WARC-Segment-Origin-ID"]
 		if ok {
 			id = s[0]
 		}
 		_, final = fields["WARC-Segment-Total-Length"] // if we have this field, can mark continuation as complete
 	} else {
-		id = w.WARCHeader.ID
+		id = w.warcHeader.id
 	}
 	cr, ok := c[id]
 	if !ok {
 		cr = &continuation{
-			WARCHeader: &WARCHeader{
-				url:    w.WARCHeader.url,
-				ID:     w.WARCHeader.ID,
-				date:   w.WARCHeader.date,
-				Type:   w.WARCHeader.Type,
-				fields: make([]byte, len(w.WARCHeader.fields)),
+			warcHeader: &warcHeader{
+				url:    w.warcHeader.url,
+				id:     w.warcHeader.id,
+				date:   w.warcHeader.date,
+				typ:    w.warcHeader.typ,
+				fields: make([]byte, len(w.warcHeader.fields)),
 			},
-			bufs: make([][]byte, w.WARCHeader.segment),
+			bufs: make([][]byte, w.warcHeader.segment),
 		}
-		copy(cr.WARCHeader.fields, w.WARCHeader.fields)
+		copy(cr.warcHeader.fields, w.warcHeader.fields)
 		c[id] = cr
 	}
 	if final {
 		cr.final = true
 	}
-	if len(cr.bufs) < w.WARCHeader.segment {
-		nb := make([][]byte, w.WARCHeader.segment)
+	if len(cr.bufs) < w.warcHeader.segment {
+		nb := make([][]byte, w.warcHeader.segment)
 		copy(nb, cr.bufs)
 		cr.bufs = nb
 	}
-	cr.bufs[w.WARCHeader.segment-1], _ = ioutil.ReadAll(w)
+	cr.bufs[w.warcHeader.segment-1], _ = ioutil.ReadAll(w)
 	if !cr.complete() {
 		return nil, false
 	}
@@ -461,7 +461,7 @@ func (c continuations) put(w *WARCReader) (Record, bool) {
 }
 
 type continuation struct {
-	*WARCHeader
+	*warcHeader
 	final bool
 	idx   int
 	start int

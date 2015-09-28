@@ -20,21 +20,30 @@ import (
 	"time"
 )
 
-type WARCHeader struct {
+type WARCRecord interface {
+	ID() string
+	Type() string
+	Record
+}
+
+type warcHeader struct {
 	url     string    // WARC-Target-URI
-	ID      string    // WARC-Record-ID
+	id      string    // WARC-Record-ID
 	date    time.Time // WARC-Date
-	Type    string    // WARC-Type
+	typ     string    // WARC-Type
 	segment int       // WARC-Segment-Number
 	fields  []byte
 }
 
-func (h *WARCHeader) URL() string                 { return h.url }
-func (h *WARCHeader) Date() time.Time             { return h.date }
-func (h *WARCHeader) Fields() map[string][]string { return getAllValues(h.fields) }
+func (h *warcHeader) URL() string                 { return h.url }
+func (h *warcHeader) Date() time.Time             { return h.date }
+func (h *warcHeader) Fields() map[string][]string { return getAllValues(h.fields) }
+
+func (h *warcHeader) ID() string   { return h.id }
+func (h *warcHeader) Type() string { return h.typ }
 
 type WARCReader struct {
-	*WARCHeader
+	*warcHeader
 	*reader
 	continuations
 }
@@ -48,7 +57,7 @@ func NewWARCReader(r io.Reader) (*WARCReader, error) {
 }
 
 func newWARCReader(r *reader) (*WARCReader, error) {
-	w := &WARCReader{&WARCHeader{}, r, nil}
+	w := &WARCReader{&warcHeader{}, r, nil}
 	return w, w.reset()
 }
 
@@ -75,7 +84,7 @@ func (w *WARCReader) Next() (Record, error) {
 		return nil, ErrWARCRecord
 	}
 	vals := getSelectValues(w.fields, "WARC-Type", "WARC-Target-URI", "WARC-Date", "Content-Length", "WARC-Record-ID", "WARC-Segment-Number")
-	w.Type, w.url, w.ID = vals[0], vals[1], vals[4]
+	w.typ, w.url, w.id = vals[0], vals[1], vals[4]
 	w.date, err = time.Parse(time.RFC3339, vals[2])
 	if err != nil {
 		return nil, err
@@ -111,7 +120,7 @@ func (w *WARCReader) NextPayload() (Record, error) {
 			}
 			continue
 		}
-		switch w.Type {
+		switch w.typ {
 		default:
 			continue
 		case "resource", "conversion":
