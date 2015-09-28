@@ -28,6 +28,13 @@ const ARCTime = "20060102150405"
 // and ARC version 2 URL record blocks.
 // ARC version 2 URL record blocks have additional fields not exposed
 // here. These fields are available in the Fields() map.
+// To access the IP() and MIME() methods of an ARCRecord, do an interface
+// assertion on a Record.
+//
+// Example:
+//  record, _ := reader.Next()
+//  arcrecord, ok := record.(ARCRecord)
+//  if ok {fmt.Println(arcrecord.IP())}
 type ARCRecord interface {
 	IP() string
 	MIME() string
@@ -45,6 +52,7 @@ type ARC struct {
 	OriginCode string    // Name of gathering organization
 }
 
+// ARCReader is the ARC implementation of a webarchive Reader
 type ARCReader struct {
 	*ARC
 	*reader
@@ -112,6 +120,8 @@ func (u *url2) Fields() map[string][]string {
 	return fields
 }
 
+// NewARCReader creates a new ARC reader from the supplied io.Reader.
+// Use instead of NewReader if you are only working with ARC files.
 func NewARCReader(r io.Reader) (*ARCReader, error) {
 	rdr, err := newReader(r)
 	if err != nil {
@@ -127,6 +137,7 @@ func newARCReader(r *reader) (*ARCReader, error) {
 	return arc, err
 }
 
+// Reset allows re-use of an ARC reader
 func (a *ARCReader) Reset(r io.Reader) error {
 	a.reader.reset(r)
 	return a.reset()
@@ -138,6 +149,7 @@ func (a *ARCReader) reset() error {
 	return err
 }
 
+// Next iterates to the next Record. Returns io.EOF at the end of file.
 func (a *ARCReader) Next() (Record, error) {
 	buf, err := a.next()
 	if err != nil {
@@ -156,6 +168,10 @@ func (a *ARCReader) Next() (Record, error) {
 	return a, err
 }
 
+// NextPayload iterates to the next payload record.
+// As ARC files do not differentiate between different types of records,
+// the effect of NextPayload for an ARC reader is just to strip HTTP
+// headers. These stripped headers are then made available in the Fields() map.
 func (a *ARCReader) NextPayload() (Record, error) {
 	r, err := a.Next()
 	if err != nil {

@@ -20,6 +20,15 @@ import (
 	"time"
 )
 
+// WARCRecord allows access to specific WARC record fields. Other WARC
+// fields not included here are accessible via the Fields() method.
+// To access the ID() and Type() methods of a WARCRecord, do an interface
+// assertion on a Record.
+//
+// Example:
+//  record, _ := reader.Next()
+//  warcrecord, ok := record.(WARCRecord)
+//  if ok {fmt.Println(warcrecord.ID())}
 type WARCRecord interface {
 	ID() string
 	Type() string
@@ -35,19 +44,31 @@ type warcHeader struct {
 	fields  []byte
 }
 
-func (h *warcHeader) URL() string                 { return h.url }
-func (h *warcHeader) Date() time.Time             { return h.date }
+// URL returns the URL of the current Record.
+func (h *warcHeader) URL() string { return h.url }
+
+// Date returns the archive date of the current Record.
+func (h *warcHeader) Date() time.Time { return h.date }
+
+// Fields returns a map of all WARC fields for the current Record.
+// If NextPayload was used, this map will also contain any stripped HTTP headers.
 func (h *warcHeader) Fields() map[string][]string { return getAllValues(h.fields) }
 
-func (h *warcHeader) ID() string   { return h.id }
+// ID returns the WARC Record ID.
+func (h *warcHeader) ID() string { return h.id }
+
+// Type returns the WARC Type
 func (h *warcHeader) Type() string { return h.typ }
 
+// WARCReader is the WARC implementation of a webarchive Reader
 type WARCReader struct {
 	*warcHeader
 	*reader
 	continuations
 }
 
+// NewWARCReader creates a new WARC reader from the supplied io.Reader.
+// Use instead of NewReader if you are only working with ARC files.
 func NewWARCReader(r io.Reader) (*WARCReader, error) {
 	rdr, err := newReader(r)
 	if err != nil {
@@ -61,6 +82,7 @@ func newWARCReader(r *reader) (*WARCReader, error) {
 	return w, w.reset()
 }
 
+// Reset allows re-use of a ARC reader
 func (w *WARCReader) Reset(r io.Reader) error {
 	w.reader.reset(r)
 	return w.reset()
@@ -73,6 +95,7 @@ func (w *WARCReader) reset() error {
 	return nil
 }
 
+// Next iterates to the next Record. Returns io.EOF at the end of file.
 func (w *WARCReader) Next() (Record, error) {
 	// discard the returned slice as the first line in a WARC record is just the WARC header
 	_, err := w.next()
@@ -105,6 +128,10 @@ func (w *WARCReader) Next() (Record, error) {
 	return w, nil
 }
 
+// NextPayload iterates to the next payload record.
+// It skips non-resource, conversion or response records and merges continuations into single records.
+// It also strips HTTP headers from response records. After stripping, those HTTP headers are available alongside
+// the WARC headers in the record.Fields() map.
 func (w *WARCReader) NextPayload() (Record, error) {
 	for {
 		r, err := w.Next()

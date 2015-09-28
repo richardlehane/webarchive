@@ -31,23 +31,28 @@ var (
 	ErrDiscard       = errors.New("webarchive: failed to do full read during discard")
 )
 
+// Record represents both ARC and WARC records.
 type Record interface {
 	Header
 	Content
 }
 
+// Header represents the common header fields shared by ARC and WARC records.
 type Header interface {
 	URL() string
 	Date() time.Time
 	Fields() map[string][]string
 }
 
+// Content represents the content portion of a WARC or ARC record.
 type Content interface {
 	Size() int64
 	Read(p []byte) (n int, err error)
 	Slice(off int64, l int) ([]byte, error)
 	EofSlice(off int64, l int) ([]byte, error)
 }
+
+// Reader represents the common methods shared by ARC, WARC and Multi readers.
 type Reader interface {
 	Reset(io.Reader) error
 	Next() (Record, error)
@@ -55,6 +60,17 @@ type Reader interface {
 	Close() error
 }
 
+// MultiReader is the concrete type returned by webarchive.NewReader.
+// A MultiReader can represent both a WARC or ARC reader (or both if ARC and WARC files are given to the same Reader using Reset).
+//
+// Example:
+//  f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
+//  rdr, _ := NewReader(f)
+//  f.Close()
+//  f, _ = os.Open("examples/IAH-20080430204825-00000-blackbook.warc.gz")
+//  rdr.Reset(f)
+//  rdr.Close()
+//  f.Close()
 type MultiReader struct {
 	r *reader
 	a *ARCReader
@@ -62,6 +78,8 @@ type MultiReader struct {
 	Reader
 }
 
+// Reset allows re-use of a Multireader.
+// A Multireader created with a WARC file can be reset with an ARC file, and vice versa.
 func (m *MultiReader) Reset(r io.Reader) error {
 	if m == nil {
 		return ErrReset
@@ -91,6 +109,8 @@ func (m *MultiReader) Reset(r io.Reader) error {
 	return ErrNotWebarchive
 }
 
+// NewReader returns a new webarchive Reader reading from the io.Reader.
+// The supplied io.Reader can be a WARC, ARC, WARC.GZ or ARC.GZ file.
 func NewReader(r io.Reader) (Reader, error) {
 	rdr, err := newReader(r)
 	if err != nil {

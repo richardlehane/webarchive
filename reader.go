@@ -41,10 +41,16 @@ type reader struct {
 	store   []byte        // used as temp store for fields
 }
 
+// Size returns the size in bytes of the content. When iterating with NextPayload,
+// Size returns the size after HTTP headers have been stripped. So the size reported
+// here may be different from that reported in the ARC or WARC's header block.
 func (r *reader) Size() int64 {
 	return r.sz
 }
 
+// Read reads the content of the record. When iterating with NextPayload, the read
+// will start after any stripped HTTP headers. Otherwise, the read starts immediately after
+// the WARC or ARC header block.
 func (r *reader) Read(p []byte) (int, error) {
 	if r.thisIdx >= r.sz {
 		return 0, io.EOF
@@ -62,6 +68,9 @@ func (r *reader) Read(p []byte) (int, error) {
 	return l, err
 }
 
+// Slice returns a byte slice with size l from a given offset from the start of the content of the record.
+// When iterating with NextPayload, the slice zero offset starts after any stripped HTTP headers. Otherwise,
+// the zero offset is immediately after the WARC or ARC header block.
 func (r *reader) Slice(off int64, l int) ([]byte, error) {
 	if !r.slicer {
 		return nil, ErrNotSlicer
@@ -80,6 +89,7 @@ func (r *reader) Slice(off int64, l int) ([]byte, error) {
 	return slc, err
 }
 
+// Slice returns a byte slice with size l from a given offset from the end of the content of the record.
 func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
 	if !r.slicer {
 		return nil, ErrNotSlicer
@@ -100,6 +110,8 @@ func (r *reader) EofSlice(off int64, l int) ([]byte, error) {
 	return slc, err
 }
 
+// Close closes the underlying gzip reader if the WARC or ARC file is gzipped.
+// If not a gzip file, this is a nop.
 func (r *reader) Close() error {
 	if r.closer == nil {
 		return nil
