@@ -33,7 +33,7 @@ func TestVersionBlock(t *testing.T) {
 	}
 }
 
-func ExampleBlackbookARC() {
+func ExampleNewARCReader() {
 	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
 	rdr, err := NewARCReader(f)
 	if err != nil {

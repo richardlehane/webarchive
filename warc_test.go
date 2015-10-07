@@ -45,7 +45,7 @@ func TestGZ(t *testing.T) {
 	}
 }
 
-func ExampleBlackbookWARC() {
+func ExampleNewWARCReader() {
 	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.warc")
 	rdr, err := NewWARCReader(f)
 	if err != nil {
