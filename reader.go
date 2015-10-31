@@ -413,6 +413,21 @@ func getSelectValues(buf []byte, vals ...string) []string {
 	return ret
 }
 
+func getSingleValues(buf []byte, key string) []string {
+	var ret = make([]string, 0, 2) // designed to return Content-Type when expect more than one
+	lines := getLines(buf)
+	for l := lines(); l != nil; l = lines() {
+		parts := bytes.SplitN(l, []byte(":"), 2)
+		if len(parts) == 2 {
+			k := normaliseKey(parts[0])
+			if k == key {
+				ret = append(ret, string(bytes.TrimSpace(parts[1])))
+			}
+		}
+	}
+	return ret
+}
+
 func getAllValues(buf []byte) map[string][]string {
 	ret := make(map[string][]string)
 	lines := getLines(buf)

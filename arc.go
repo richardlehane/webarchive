@@ -28,7 +28,7 @@ const ARCTime = "20060102150405"
 // and ARC version 2 URL record blocks.
 // ARC version 2 URL record blocks have additional fields not exposed
 // here. These fields are available in the Fields() map.
-// To access the IP() and MIME() methods of an ARCRecord, do an interface
+// To access the IP() method of an ARCRecord, do an interface
 // assertion on a Record.
 //
 // Example:
@@ -37,7 +37,6 @@ const ARCTime = "20060102150405"
 //  if ok {fmt.Println(arcrecord.IP())}
 type ARCRecord interface {
 	IP() string
-	MIME() string
 	Record
 }
 
@@ -61,7 +60,6 @@ type ARCReader struct {
 
 type arcHeader interface {
 	IP() string
-	MIME() string
 	Header
 	size() int64
 	setfields([]byte)

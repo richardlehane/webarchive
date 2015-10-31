@@ -41,6 +41,7 @@ type warcHeader struct {
 	date    time.Time // WARC-Date
 	typ     string    // WARC-Type
 	segment int       // WARC-Segment-Number
+	mime    string    // WARC-Identified-Payload-Type or HTTP Content-Type header
 	fields  []byte
 }
 
@@ -49,6 +50,21 @@ func (h *warcHeader) URL() string { return h.url }
 
 // Date returns the archive date of the current Record.
 func (h *warcHeader) Date() time.Time { return h.date }
+
+func (h *warcHeader) MIME() string {
+	if h.mime != "" {
+		return h.mime
+	}
+	ctypes := getSingleValues(h.fields, "Content-Type")
+	switch len(ctypes) {
+	case 0:
+		return ""
+	case 1:
+		return ctypes[0]
+	default:
+		return ctypes[1]
+	}
+}
 
 // Fields returns a map of all WARC fields for the current Record.
 // If NextPayload was used, this map will also contain any stripped HTTP headers.
@@ -106,8 +122,8 @@ func (w *WARCReader) Next() (Record, error) {
 	if err != nil {
 		return nil, ErrWARCRecord
 	}
-	vals := getSelectValues(w.fields, "WARC-Type", "WARC-Target-URI", "WARC-Date", "Content-Length", "WARC-Record-ID", "WARC-Segment-Number")
-	w.typ, w.url, w.id = vals[0], vals[1], vals[4]
+	vals := getSelectValues(w.fields, "WARC-Type", "WARC-Target-URI", "WARC-Date", "Content-Length", "WARC-Record-ID", "WARC-Segment-Number", "WARC-Identified-Payload-Type")
+	w.typ, w.url, w.id, w.mime = vals[0], vals[1], vals[4], vals[6]
 	w.date, err = time.Parse(time.RFC3339, vals[2])
 	if err != nil {
 		return nil, err

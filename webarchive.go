@@ -41,6 +41,7 @@ type Record interface {
 type Header interface {
 	URL() string
 	Date() time.Time
+	MIME() string
 	Fields() map[string][]string
 }
 
