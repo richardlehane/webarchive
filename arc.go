@@ -95,6 +95,33 @@ func (u *url1) Fields() map[string][]string {
 func (u *url1) IP() string   { return u.ip }
 func (u *url1) MIME() string { return u.mime }
 
+func (u *url1) transferEncodings() []string {
+	if len(u.fields) == 0 {
+		return nil
+	}
+	vals := getSelectValues(u.fields, "Transfer-Encoding")
+	if vals[0] == "" {
+		return nil
+	}
+	return splitAndReverse(vals[0])
+}
+func (u *url1) encodings() []string {
+	if len(u.fields) == 0 {
+		return nil
+	}
+	vals := getSelectValues(u.fields, "Transfer-Encoding", "Content-Encoding")
+	if vals[0] == "" {
+		if vals[1] == "" {
+			return nil
+		}
+		return splitAndReverse(vals[1])
+	}
+	if vals[1] == "" {
+		return splitAndReverse(vals[0])
+	}
+	return append(splitAndReverse(vals[0]), splitAndReverse(vals[1])...)
+}
+
 func (u *url1) size() int64        { return u.sz }
 func (u *url1) setfields(f []byte) { u.fields = f }
 

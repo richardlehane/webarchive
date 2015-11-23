@@ -68,6 +68,10 @@ func (r *reader) Read(p []byte) (int, error) {
 	return l, err
 }
 
+func (r *reader) IsSlicer() bool {
+	return r.slicer
+}
+
 // Slice returns a byte slice with size l from a given offset from the start of the content of the record.
 // When iterating with NextPayload, the slice zero offset starts after any stripped HTTP headers. Otherwise,
 // the zero offset is immediately after the WARC or ARC header block.
@@ -144,13 +148,6 @@ func (r *reader) reset(s io.Reader) error {
 	}
 	r.idx, r.thisIdx, r.sz = 0, 0, 0
 	return r.unzip()
-}
-
-func isgzip(buf []byte) bool {
-	if buf[0] != 0x1f || buf[1] != 0x8b || buf[2] != 8 {
-		return false
-	}
-	return true
 }
 
 func (r *reader) unzip() error {
@@ -396,6 +393,15 @@ func normaliseKey(k []byte) string {
 	return s
 }
 
+func splitAndReverse(s string) []string {
+	vals := strings.Split(s, ",")
+	ret := make([]string, len(vals))
+	for i := range ret {
+		ret[i] = strings.TrimSpace(vals[len(vals)-i-1])
+	}
+	return ret
+}
+
 func getSelectValues(buf []byte, vals ...string) []string {
 	ret := make([]string, len(vals))
 	lines := getLines(buf)
@@ -547,6 +553,10 @@ func (c *continuation) Read(p []byte) (int, error) {
 	return l, err
 }
 
+func (c *continuation) IsSlicer() bool {
+	return true
+}
+
 func (c *continuation) Slice(off int64, l int) ([]byte, error) {
 	if c.start+int(off) >= len(c.buf) {
 		return nil, io.EOF
@@ -570,4 +580,8 @@ func (c *continuation) EofSlice(off int64, l int) ([]byte, error) {
 		o = len(c.buf) - c.start - int(off) - l
 	}
 	return c.buf[o:l], err
+}
+
+func (c *continuation) peek(i int) ([]byte, error) {
+	return c.Slice(0, i)
 }

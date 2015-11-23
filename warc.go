@@ -66,6 +66,27 @@ func (h *warcHeader) MIME() string {
 	}
 }
 
+func (h *warcHeader) transferEncodings() []string {
+	vals := getSelectValues(h.fields, "Transfer-Encoding")
+	if vals[0] == "" {
+		return nil
+	}
+	return splitAndReverse(vals[0])
+}
+func (h *warcHeader) encodings() []string {
+	vals := getSelectValues(h.fields, "Transfer-Encoding", "Content-Encoding")
+	if vals[0] == "" {
+		if vals[1] == "" {
+			return nil
+		}
+		return splitAndReverse(vals[1])
+	}
+	if vals[1] == "" {
+		return splitAndReverse(vals[0])
+	}
+	return append(splitAndReverse(vals[0]), splitAndReverse(vals[1])...)
+}
+
 // Fields returns a map of all WARC fields for the current Record.
 // If NextPayload was used, this map will also contain any stripped HTTP headers.
 func (h *warcHeader) Fields() map[string][]string { return getAllValues(h.fields) }

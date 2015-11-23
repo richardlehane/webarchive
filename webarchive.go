@@ -43,6 +43,9 @@ type Header interface {
 	Date() time.Time
 	MIME() string
 	Fields() map[string][]string
+	// private methods - used by DecodePayload
+	transferEncodings() []string
+	encodings() []string
 }
 
 // Content represents the content portion of a WARC or ARC record.
@@ -51,6 +54,8 @@ type Content interface {
 	Read(p []byte) (n int, err error)
 	Slice(off int64, l int) ([]byte, error)
 	EofSlice(off int64, l int) ([]byte, error)
+	// private method -used by DecodePayload
+	peek(i int) ([]byte, error)
 }
 
 // Reader represents the common methods shared by ARC, WARC and Multi readers.
