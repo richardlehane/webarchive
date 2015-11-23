@@ -12,19 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ransfer-Encoding 	The form of encoding used to safely transfer the entity to the user. Currently defined methods are: chunked, compress, deflate, gzip, identity.
-
-/*
-The official list of tokens available to servers and client is maintained by IANA,[4] and it includes:
-
-    compress – UNIX "compress" program method (historic; deprecated in most applications and replaced by gzip or deflate)
-    *deflate – compression based on the deflate algorithm (described in RFC 1951), wrapped inside the zlib data format (RFC 1950);
-    exi – W3C Efficient XML Interchange
-    *gzip – GNU zip format (described in RFC 1952). This method is the most broadly supported as of March 2011.[5]
-    *identity – No transformation is used. This is the default value for content coding.
-    pack200-gzip – Network Transfer Format for Java Archives[6]
-
-*/
 package webarchive
 
 import (
@@ -124,14 +111,14 @@ func newDecoder(rec Record, encodings []string) Record {
 	return pd
 }
 
-// DecodePayload decodes any transfer or content encodings declared in the HTTP headers
-// of a record. Decodes chunked, deflate and gzip encodings.
+// DecodePayload decodes any encodings (transfer or content) declared in a record's HTTP header.
+// Decodes chunked, deflate and gzip encodings.
 func DecodePayload(r Record) Record {
 	return newDecoder(r, r.encodings())
 }
 
-// DecodePayload decodes any transfer or content encodings declared in the HTTP headers
-// of a record. Decodes chunked, deflate and gzip encodings.
-func TransferDecodePayload(r Record) Record {
+// DecodePayloadT decodes any transfer encodings declared in a record's HTTP header.
+// Decodes chunked, deflate and gzip encodings.
+func DecodePayloadT(r Record) Record {
 	return newDecoder(r, r.transferEncodings())
 }
