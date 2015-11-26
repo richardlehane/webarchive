@@ -42,7 +42,7 @@ func TestDecodePayloadT(t *testing.T) {
 	if i, err := dec.Read(buf); err != nil || i != 4 {
 		t.Fatal("failure reading decode.warc")
 	}
-	if string(buf) == " <!D" {
+	if string(buf) == "\n<!D" {
 		t.Fatalf("expecting gibberish got %s", buf)
 	}
 }
