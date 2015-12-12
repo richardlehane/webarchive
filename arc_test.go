@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"testing"
-
-	"github.com/richardlehane/siegfried/pkg/core/siegreader"
 )
 
 func TestVersionBlock(t *testing.T) {
@@ -20,17 +18,6 @@ func TestVersionBlock(t *testing.T) {
 		t.Errorf("expecting 20080430204825, got %v", rdr.ARC)
 	}
 	f.Close()
-	f, _ = os.Open("examples/hello-world2.arc")
-	defer f.Close()
-	buffers := siegreader.New()
-	buf, _ := buffers.Get(f)
-	rdr, err = NewARCReader(siegreader.ReaderFrom(buf))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rdr.FileDate.Format(ARCTime) != "19960923142103" {
-		t.Errorf("expecting 19960923142103, got %v", rdr.ARC)
-	}
 }
 
 func ExampleNewARCReader() {

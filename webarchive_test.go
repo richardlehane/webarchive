@@ -10,23 +10,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/richardlehane/siegfried/pkg/core/siegreader"
 )
 
 func opener(t *testing.T) func(string) (Reader, Reader) {
 	var wrdr, wrdr2 Reader
-	buffers := siegreader.New()
 	return func(path string) (Reader, Reader) {
 		buf, _ := ioutil.ReadFile(path)
 		rdr := bytes.NewReader(buf)
 		rdr2 := bytes.NewReader(buf)
-		sbuf, _ := buffers.Get(rdr)
 		var err error
 		if wrdr == nil {
-			wrdr, err = NewReader(siegreader.ReaderFrom(sbuf))
+			wrdr, err = NewReader(rdr)
 		} else {
-			err = wrdr.Reset(siegreader.ReaderFrom(sbuf))
+			err = wrdr.Reset(rdr)
 		}
 		if err != nil {
 			if strings.Index(path, "invalid") != -1 {
@@ -58,10 +54,6 @@ func TestReaders(t *testing.T) {
 		if filepath.Ext(path) == ".DS_Store" || filepath.Ext(path) == ".cdx" {
 			return nil
 		}
-		var gz bool
-		if filepath.Ext(path) == ".gz" {
-			gz = true
-		}
 		wrdr, wrdr2 := open(path)
 		if wrdr == nil {
 			return nil
@@ -88,13 +80,6 @@ func TestReaders(t *testing.T) {
 			if !bytes.Equal(b1, b2) {
 				t.Fatalf("test case: %s\nreads aren't equal at %d:\nfirst read:\n%s\n\nsecond read:\n%s\n\n", path, count, string(b1), string(b2))
 			}
-			if !gz {
-				s1, _ := r1.Slice(0, len(b1))
-				s2, _ := r1.EofSlice(0, len(b1))
-				if !bytes.Equal(b1, s1) || !bytes.Equal(s1, s2) {
-					t.Fatalf("test case: %s\nslices aren't equal at %d:\nread:%s\nfirst slice:%s\nsecond slice:%s\n\n", path, count, string(b1), string(s1), string(s2))
-				}
-			}
 		}
 		count = 0
 		wrdr, wrdr2 = open(path)
@@ -118,13 +103,6 @@ func TestReaders(t *testing.T) {
 			b2, _ := ioutil.ReadAll(r2)
 			if !bytes.Equal(b1, b2) {
 				t.Fatalf("payload test case: %s\nreads aren't equal at %d:\nfirst read:\n%s\n\nsecond read:\n%s\n\n", path, count, string(b1), string(b2))
-			}
-			if !gz {
-				s1, _ := r1.Slice(0, len(b1))
-				s2, _ := r1.EofSlice(0, len(b1))
-				if !bytes.Equal(b1, s1) || !bytes.Equal(s1, s2) {
-					t.Fatalf("test case: %s\nslices aren't equal at %d:\nread:%s\nfirst slice:%s\nsecond slice:%s\n\n", path, count, string(b1), string(s1), string(s2))
-				}
 			}
 		}
 		return nil
