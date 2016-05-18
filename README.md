@@ -23,12 +23,14 @@ for record, err := rdr.Next(); err == nil; record, err = rdr.Next() {
   }
   fmt.Printf("Read: %d bytes\n", i)
   // records also have URL(), MIME(), Date() and Size() methods
-  fmt.Printf("URL: %s, MIME: %s, Date: %v, Size: %d\n", record.URL(), record.MIME(), record.Date(), record.Size())
+  fmt.Printf("URL: %s, MIME: %s, Date: %v, Size: %d\n", 
+    record.URL(), record.MIME(), record.Date(), record.Size())
   // the Fields() method returns all the fields in the WARC or ARC record
   for key, values := range record.Fields() {
     fmt.Printf("Field key: %s, Field values: %v\n", key, values)
   }
 }
+f.Close()
 f, _ = os.Open("examplesIAH-20080430204825-00000-blackbook.warc.gz")
 defer f.Close()
 // readers can Reset() to reuse the underlying buffers
