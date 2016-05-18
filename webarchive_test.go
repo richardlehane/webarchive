@@ -146,6 +146,11 @@ func ExampleNewReader() {
 	// records. After stripping, those HTTP headers are available alongside the WARC
 	// headers in the record.Fields() map.
 	for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload() {
+		// DecodePayload(record) decodes any encodings (transfer or
+		// content) declared in a record's HTTP header.
+		// DecodePayloadT(record) just decodes transfer encodings.
+		// Both decode chunked, deflate and gzip encodings.
+		record = DecodePayload(record)
 		i, err := io.Copy(ioutil.Discard, record)
 		if err != nil {
 			log.Fatal(err)
