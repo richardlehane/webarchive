@@ -47,7 +47,7 @@ for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload(
   // content) declared in a record's HTTP header.
   // webarchive.DecodePayloadT(record) just decodes transfer encodings.
   // Both decode chunked, deflate and gzip encodings.
-  record = DecodePayload(record)
+  record = webarchive.DecodePayload(record)
   i, err := io.Copy(ioutil.Discard, record)
   if err != nil {
     log.Fatal(err)
