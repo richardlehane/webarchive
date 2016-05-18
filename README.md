@@ -22,8 +22,8 @@ for record, err := rdr.Next(); err == nil; record, err = rdr.Next() {
     log.Fatal(err)
   }
   fmt.Printf("Read: %d bytes\n", i)
-  // records also have URL(), Date() and Size() methods
-  fmt.Printf("URL: %s, Date: %v, Size: %d\n", record.URL(), record.Date(), record.Size())
+  // records also have URL(), MIME(), Date() and Size() methods
+  fmt.Printf("URL: %s, MIME: %s, Date: %v, Size: %d\n", record.URL(), record.MIME(), record.Date(), record.Size())
   // the Fields() method returns all the fields in the WARC or ARC record
   for key, values := range record.Fields() {
     fmt.Printf("Field key: %s, Field values: %v\n", key, values)
