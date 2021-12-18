@@ -41,7 +41,7 @@ func iszlib(buf []byte) bool {
 func ischunk(buf []byte) bool {
 	for i, c := range buf {
 		switch {
-		case '0' >= c && c <= '9':
+		case '0' <= c && c <= '9':
 			continue
 		case 'a' <= c && c <= 'f':
 			continue
