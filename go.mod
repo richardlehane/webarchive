@@ -1,1 +1,1 @@
-module github.com/jopil1/webarchive
+module github.com/jopik1/webarchive
