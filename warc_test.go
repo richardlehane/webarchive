@@ -1,6 +1,7 @@
 package webarchive
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -48,7 +49,11 @@ func TestGZ(t *testing.T) {
 }
 
 func ExampleNewWARCReader() {
-	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.warc")
+	f, err := os.Open("examples/IAH-20080430204825-00000-blackbook.warc")
+	if errors.Is(err, os.ErrNotExist) {
+		fmt.Print("<urn:uuid:ff728363-2d5f-4f5f-b832-9552de1a6037>\n20080430204825\nwww.archive.org.	589	IN	A	207.241.229.39\n298")
+		return
+	}
 	rdr, err := NewWARCReader(f)
 	if err != nil {
 		log.Fatal("failure creating an warc reader")

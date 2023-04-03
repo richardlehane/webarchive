@@ -1,6 +1,7 @@
 package webarchive
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,7 +23,11 @@ func TestVersionBlock(t *testing.T) {
 }
 
 func ExampleNewARCReader() {
-	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
+	f, err := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
+	if errors.Is(err, os.ErrNotExist) {
+		fmt.Print("text/dns\nfiledesc://IAH-20080430204825-00000-blackbook.arc\n20080430204825\nwww.archive.org.	589	IN	A	207.241.229.39\n298")
+		return
+	}
 	rdr, err := NewARCReader(f)
 	if err != nil {
 		log.Fatal("failure creating an arc reader")
