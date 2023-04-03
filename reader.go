@@ -195,7 +195,7 @@ func (r *reader) next() ([]byte, error) {
 	// advance if haven't read the previous record
 	r.idx += r.sz
 	if r.thisIdx < r.sz && !r.slicer {
-		discard(r.buf, int(r.sz-r.thisIdx))
+		r.buf.Discard(int(r.sz-r.thisIdx))
 	}
 	var slc []byte
 	var err error

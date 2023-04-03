@@ -32,9 +32,10 @@ const ARCTime = "20060102150405"
 // assertion on a Record.
 //
 // Example:
-//  record, _ := reader.Next()
-//  arcrecord, ok := record.(ARCRecord)
-//  if ok {fmt.Println(arcrecord.IP())}
+//
+//	record, _ := reader.Next()
+//	arcrecord, ok := record.(ARCRecord)
+//	if ok {fmt.Println(arcrecord.IP())}
 type ARCRecord interface {
 	IP() string
 	Record
@@ -243,7 +244,7 @@ func (r *ARCReader) readVersionBlock() (*ARC, error) {
 	if r.slicer {
 		r.idx += int64(l)
 	} else {
-		discard(r.buf, l)
+		r.buf.Discard(l)
 	}
 	return &ARC{
 		FileDesc:   string(line1[0]),
