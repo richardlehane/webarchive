@@ -10,6 +10,7 @@ import (
 )
 
 func TestWARC(t *testing.T) {
+	checkExamples(t)
 	f, _ := os.Open("examples/hello-world.warc")
 	defer f.Close()
 	rdr, err := NewWARCReader(f)
@@ -26,6 +27,7 @@ func TestWARC(t *testing.T) {
 }
 
 func TestGZ(t *testing.T) {
+	checkExamples(t)
 	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.warc.gz")
 	defer f.Close()
 	rdr, err := NewWARCReader(f)
