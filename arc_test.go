@@ -9,6 +9,7 @@ import (
 )
 
 func TestVersionBlock(t *testing.T) {
+	checkExamples(t)
 	f, _ := os.Open("examples/IAH-20080430204825-00000-blackbook.arc")
 	rdr, err := NewARCReader(f)
 	if err != nil {

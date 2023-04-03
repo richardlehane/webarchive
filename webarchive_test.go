@@ -2,6 +2,7 @@ package webarchive
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,6 +12,12 @@ import (
 	"strings"
 	"testing"
 )
+
+func checkExamples(t *testing.T) {
+	if _, err := os.Stat("examples"); errors.Is(err, os.ErrNotExist) {
+		t.Skip("skipping: no examples directory at path 'examples/'")
+	}
+}
 
 func opener(t *testing.T) func(string) (Reader, Reader) {
 	var wrdr, wrdr2 Reader
@@ -46,6 +53,7 @@ func opener(t *testing.T) func(string) (Reader, Reader) {
 }
 
 func TestReaders(t *testing.T) {
+	checkExamples(t)
 	open := opener(t)
 	wf := func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
