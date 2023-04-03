@@ -62,4 +62,4 @@ for record, err := rdr.NextPayload(); err == nil; record, err = rdr.NextPayload(
   
 Install with `go get github.com/richardlehane/webarchive`
 
-[![Build Status](https://travis-ci.org/richardlehane/webarchive.png?branch=master)](https://travis-ci.org/richardlehane/webarchive) [![GoDoc](https://godoc.org/github.com/richardlehane/webarchive?status.svg)](https://godoc.org/github.com/richardlehane/webarchive)
+[![GoDoc](https://godoc.org/github.com/richardlehane/webarchive?status.svg)](https://godoc.org/github.com/richardlehane/webarchive)
