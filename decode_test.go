@@ -6,6 +6,7 @@ import (
 )
 
 func TestDecodePayload(t *testing.T) {
+	checkExamples(t)
 	f, _ := os.Open("examples/decode.warc")
 	defer f.Close()
 	rdr, err := NewWARCReader(f)
@@ -27,6 +28,7 @@ func TestDecodePayload(t *testing.T) {
 }
 
 func TestDecodePayloadT(t *testing.T) {
+	checkExamples(t)
 	f, _ := os.Open("examples/decode.warc")
 	defer f.Close()
 	rdr, err := NewWARCReader(f)
