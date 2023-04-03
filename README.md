@@ -31,7 +31,7 @@ for record, err := rdr.Next(); err == nil; record, err = rdr.Next() {
   }
 }
 f.Close()
-f, _ = os.Open("examplesIAH-20080430204825-00000-blackbook.warc.gz")
+f, _ = os.Open("examples/IAH-20080430204825-00000-blackbook.warc.gz")
 defer f.Close()
 // readers can Reset() to reuse the underlying buffers
 err = rdr.Reset(f)
